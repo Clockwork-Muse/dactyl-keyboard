@@ -1,0 +1,102 @@
+// For format details, see https://aka.ms/vscode-remote/devcontainer.json
+{
+    "name": "Dactyl-Manuform generator dev environment",
+    "dockerFile": "Dockerfile",
+    "context": "..",
+    "runArgs": [
+        "--name", "dactyl_manuform_generator_dev",
+    ],
+    "workspaceFolder": "/workspaces/dactyl_manuform",
+    "workspaceMount": "source=${localWorkspaceFolder},target=${containerWorkspaceFolder},type=bind,consistency=cached",
+    "build": {
+        "args": {
+            "IMAGE_USERNAME": "vscode",
+        },
+    },
+    // Additional volumes mounted into the container
+    "mounts": [
+        "type=volume,source=dactyl_manuform_generator_dev_vscode_server,target=/home/vscode/.vscode-server/",
+        "type=volume,source=dactyl_manuform_generator_dev_vscode_server_insiders,target=/home/vscode/.vscode-server-insiders/",
+    ],
+
+    "features": {
+        "ghcr.io/devcontainers/features/common-utils:1": {
+            "username": "automatic",
+            "uid": "automatic",
+            "gid": "automatic",
+            "installZsh": false,
+            "installOhMyZsh": false,
+            "upgradePackages": true,
+            "nonFreePackages": false
+        },
+    },
+
+    "containerEnv": {
+        "HOME": "/home/vscode",
+        "WORKSPACE": "${containerWorkspaceFolder}",
+    },
+
+    "postCreateCommand": [ "/bin/bash", ".devcontainer/environment_setup.sh" ],
+
+    // Add a non-root user.
+    "remoteUser": "vscode",
+    "updateRemoteUserUID": true,
+
+    // Configure tool-specific properties.
+    "customizations": {
+        // Configure properties specific to VS Code.
+        "vscode": {
+            // Set *default* container specific settings.json values on container create.
+            "settings": {
+                "editor.rulers": [
+                    80,
+                    120,
+                    160
+                ],
+                "editor.trimAutoWhitespace": true,
+
+                "files.exclude": {
+                    ".venv": true,
+                    "**/__pycache__": true,
+                    "**/*.egg-info": true,
+                    "**/*.bin": true,
+                    "**/*.blend1": true,
+                },
+                "files.watcherExclude": {
+                    ".venv": true,
+                    "**/__pycache__": true,
+                    "**/*.egg-info": true,
+                    "**/*.bin": true,
+                    "**/*.blend1": true,
+                },
+                "files.insertFinalNewline": true,
+                "files.trimFinalNewlines": true,
+                "files.trimTrailingWhitespace": true,
+
+                "python.analysis.memory.keepLibraryAst": true,
+                "python.defaultInterpreterPath": "${containerWorkspaceFolder}/.venv/bin/python",
+                "python.formatting.autopep8Args": [
+                    "--max-line-length=160"
+                ],
+                "python.linting.enabled": false,
+                "python.linting.pylintEnabled": false,
+                "pylint.args": [
+                    "--rcfile=${containerWorkspaceFolder}/.devcontainer/.pylintrc",
+                    "--jobs=0"
+                ],
+
+                "terminal.integrated.defaultProfile.linux": "bash",
+                "terminal.integrated.profiles.linux": {
+                    "bash": {
+                        "path": "/bin/bash"
+                    }
+                }
+            },
+            "extensions": [
+                "ms-python.python",
+                "ms-python.pylint",
+                "ms-python.vscode-pylance",
+            ],
+        }
+    }
+}
