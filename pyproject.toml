@@ -5,15 +5,15 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "dactyl-manuform-generator"
+name = "dactyl_keyboard"
 version = "0.0.1"
 authors = [
     { name="Matt Adereth" },
     { name="Tom Short" },
     { name="Josh Reve" },
-    { name="Stephen Imhoff" },
+    { name="Stephen A. Imhoff" },
 ]
-description = "A Package to generate Dactyl-Manuform keyboards"
+description = "A Package to generate Dactyl keyboards"
 readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "AGPLv3" }
@@ -31,3 +31,20 @@ dependencies = [
 [project.urls]
 "Homepage" = "https://github.com/joshreve/dactyl-keyboard"
 "Bug Tracker" = "https://github.com/joshreve/dactyl-keyboard/issues"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = [
+    "src",
+]
+
+[tool.setuptools.package-data]
+"dactyl_keyboard" = [
+    "run_config.json"
+]
+"dactyl_keyboard.parts" = [
+    "*.step",
+    "*.stl",
+]
