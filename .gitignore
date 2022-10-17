@@ -1,6 +1,9 @@
 *~
 \#*\#
 
+.venv
+*.egg-info
+
 .repl-*
 .nrepl-*
 
