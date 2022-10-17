@@ -1,0 +1,33 @@
+[build-system]
+requires = [
+    "setuptools>=61.0",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dactyl-manuform-generator"
+version = "0.0.1"
+authors = [
+    { name="Matt Adereth" },
+    { name="Tom Short" },
+    { name="Josh Reve" },
+    { name="Stephen Imhoff" },
+]
+description = "A Package to generate Dactyl-Manuform keyboards"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "AGPLv3" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "cadquery-ocp==7.6.3a0",
+    "cadquery==2.2.0b2",
+    "numpy",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/joshreve/dactyl-keyboard"
+"Bug Tracker" = "https://github.com/joshreve/dactyl-keyboard/issues"
