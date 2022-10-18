@@ -21,7 +21,7 @@ def rad2deg(rad: float) -> float:
 ###############################################
 
 ## IMPORT DEFAULT CONFIG IN CASE NEW PARAMETERS EXIST
-import generate_configuration as cfg
+from . import generate_configuration as cfg
 for item in cfg.shape_config:
     locals()[item] = cfg.shape_config[item]
 
@@ -52,10 +52,10 @@ except Exception:
     print('Setting Current Engine = {}'.format(ENGINE))
 
 if save_dir in ['', None, '.']:
-    save_path = path.join(r"..", "things")
+    save_path = path.join(r".", "things")
     parts_path = path.join(r"..", "src", "parts")
 else:
-    save_path = path.join(r"..", "things", save_dir)
+    save_path = path.join(r".", "things", save_dir)
     parts_path = path.join(r"..", r"..", "src", "parts")
 
 ###############################################
@@ -67,7 +67,7 @@ else:
 ####################################################
 
 if ENGINE == 'cadquery':
-    from helpers_cadquery import *
+    from . helpers_cadquery import *
 else:
     from helpers_solid import *
 
