@@ -1,19 +1,15 @@
-import numpy as np
-from numpy import pi
-import os.path as path
-import getopt, sys
-import json
-import os
 import copy
+import getopt
+import json
+import math
+import os
+import os.path as path
+import sys
 
+import numpy as np
 from scipy.spatial import ConvexHull as sphull
 
-def deg2rad(degrees: float) -> float:
-    return degrees * pi / 180
-
-
-def rad2deg(rad: float) -> float:
-    return rad * 180 / pi
+from . import generate_configuration as cfg
 
 
 ###############################################
@@ -515,12 +511,12 @@ def apply_key_geometry(
 
 def x_rot(shape, angle):
     # debugprint('x_rot()')
-    return rotate(shape, [rad2deg(angle), 0, 0])
+    return rotate(shape, [math.degrees(angle), 0, 0])
 
 
 def y_rot(shape, angle):
     # debugprint('y_rot()')
-    return rotate(shape, [0, rad2deg(angle), 0])
+    return rotate(shape, [0, math.degrees(angle), 0])
 
 
 def key_place(shape, column, row):
@@ -1243,7 +1239,7 @@ def mini_thumb_15x_layout(shape):
 
 def mini_thumbcaps():
     t1 = mini_thumb_1x_layout(keycap(1))
-    t15 = mini_thumb_15x_layout(rotate(keycap(1), [0, 0, rad2deg(pi / 2)]))
+    t15 = mini_thumb_15x_layout(rotate(keycap(1), [0, 0, math.degrees(math.pi / 2)]))
     return t1.add(t15)
 
 
@@ -1593,7 +1589,7 @@ def carbonfet_thumb_15x_layout(shape, plate=True):
 
 def carbonfet_thumbcaps():
     t1 = carbonfet_thumb_1x_layout(keycap(1))
-    t15 = carbonfet_thumb_15x_layout(rotate(keycap(1.5), [0, 0, rad2deg(pi / 2)]))
+    t15 = carbonfet_thumb_15x_layout(rotate(keycap(1.5), [0, 0, math.degrees(math.pi / 2)]))
     return t1.add(t15)
 
 
@@ -3371,7 +3367,7 @@ if oled_center_row is not None:
     angle_x = np.arctan2(base_pt1[2] - base_pt2[2], base_pt1[1] - base_pt2[1])
     angle_z = np.arctan2(base_pt1[0] - base_pt2[0], base_pt1[1] - base_pt2[1])
 
-    oled_mount_rotation_xyz = (rad2deg(angle_x), 0, -rad2deg(angle_z)) + np.array(oled_rotation_offset)
+    oled_mount_rotation_xyz = (math.degrees(angle_x), 0, -math.degrees(angle_z)) + np.array(oled_rotation_offset)
 
 
 
@@ -3451,7 +3447,7 @@ def tbiw_position_rotation():
 
     angle_x = np.arctan2(base_pt1[2] - base_pt2[2], base_pt1[1] - base_pt2[1])
     angle_z = np.arctan2(base_pt1[0] - base_pt2[0], base_pt1[1] - base_pt2[1])
-    tbiw_mount_rotation_xyz = (rad2deg(angle_x), 0, rad2deg(angle_z)) + np.array(tbiw_rotation_offset)
+    tbiw_mount_rotation_xyz = (math.degrees(angle_x), 0, math.degrees(angle_z)) + np.array(tbiw_rotation_offset)
 
     return tbiw_mount_location_xyz, tbiw_mount_rotation_xyz
 
@@ -3497,9 +3493,9 @@ def oled_position_rotation(side='right'):
         if trackball_in_wall and (side == ball_side or ball_side == 'both'):
             # oled_mount_rotation_xyz = (0, rad2deg(angle_x), -rad2deg(angle_z)-90) + np.array(oled_rotation_offset)
             # oled_mount_rotation_xyz = (rad2deg(angle_x)*.707, rad2deg(angle_x)*.707, -45) + np.array(oled_rotation_offset)
-            oled_mount_rotation_xyz = (0, rad2deg(angle_x), -90) + np.array(_oled_rotation_offset)
+            oled_mount_rotation_xyz = (0, math.degrees(angle_x), -90) + np.array(_oled_rotation_offset)
         else:
-            oled_mount_rotation_xyz = (rad2deg(angle_x), 0, -rad2deg(angle_z)) + np.array(_oled_rotation_offset)
+            oled_mount_rotation_xyz = (math.degrees(angle_x), 0, -math.degrees(angle_z)) + np.array(_oled_rotation_offset)
 
     return oled_mount_location_xyz, oled_mount_rotation_xyz
 
