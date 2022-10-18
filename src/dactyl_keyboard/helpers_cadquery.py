@@ -1,6 +1,11 @@
+from importlib.abc import Traversable
+import os
+from shutil import copyfileobj
+import tempfile
+
 import cadquery as cq
-from scipy.spatial import ConvexHull as sphull
 import numpy as np
+from scipy.spatial import ConvexHull as sphull
 
 
 debug_trace = False
@@ -220,11 +225,18 @@ def extrude_poly(outer_poly, inner_polys=None, height=1):  # vector=(0,0,1)):
         cq.Solid.extrudeLinear(outerWire=outer_wires, innerWires=inner_wires, vecNormal=cq.Vector(0, 0, height)))
 
 
-def import_file(fname, convexity=None):
+def import_file(parts_path: Traversable, fname, convexity=None):
     print("IMPORTING FROM {}".format(fname))
-    return cq.Workplane('XY').add(cq.importers.importShape(
-        cq.exporters.ExportTypes.STEP,
-        fname + ".step"))
+    name_with_extension = fname + ".step"
+    with tempfile.NamedTemporaryFile(suffix=name_with_extension, delete=False) as extracted:
+        with parts_path.joinpath(name_with_extension).open(mode="rb") as source_data:
+            copyfileobj(source_data, extracted)
+        extracted.close()
+        imported = cq.Workplane('XY').add(cq.importers.importShape(
+            cq.exporters.ExportTypes.STEP,
+            extracted.name))
+        os.unlink(extracted.name)
+        return imported
 
 
 def export_file(shape, fname):

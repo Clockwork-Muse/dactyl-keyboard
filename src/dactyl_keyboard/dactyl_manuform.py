@@ -1,5 +1,6 @@
 import copy
 import getopt
+from importlib.resources import files
 import json
 import math
 import os
@@ -49,10 +50,10 @@ except Exception:
 
 if save_dir in ['', None, '.']:
     save_path = path.join(r".", "things")
-    parts_path = path.join(r"..", "src", "parts")
 else:
     save_path = path.join(r".", "things", save_dir)
-    parts_path = path.join(r"..", r"..", "src", "parts")
+
+parts_path = files("dactyl_keyboard.parts")
 
 ###############################################
 # END EXTREMELY UGLY BOOTSTRAP
@@ -110,7 +111,7 @@ else:
 
 if 'HS_' in plate_style:
     symmetry = "asymmetric"
-    plate_file = path.join(parts_path, r"hot_swap_plate")
+    plate_file = "hot_swap_plate"
     plate_offset = 0.0
 
 if (trackball_in_wall or ('TRACKBALL' in thumb_style)) and not ball_side == 'both':
@@ -237,7 +238,7 @@ def single_plate(cylinder_segments=100, side="right"):
         plate = difference(plate, [undercut])
 
     if plate_file is not None:
-        socket = import_file(plate_file)
+        socket = import_file(parts_path, plate_file)
         socket = translate(socket, [0, 0, plate_thickness + plate_offset])
         plate = union([plate, socket])
 
@@ -305,15 +306,10 @@ def trackball_socket(segments=100, side="right"):
         sensor = None
 
     else:
-        tb_file = path.join(parts_path, r"trackball_socket_body_34mm")
-        tbcut_file = path.join(parts_path, r"trackball_socket_cutter_34mm")
-        sens_file = path.join(parts_path, r"trackball_sensor_mount")
-        senscut_file = path.join(parts_path, r"trackball_sensor_cutter")
-
-        shape = import_file(tb_file)
-        sensor = import_file(sens_file)
-        cutter = import_file(tbcut_file)
-        cutter = union([cutter, import_file(senscut_file)])
+        shape = import_file(parts_path, "trackball_socket_body_34mm")
+        sensor = import_file(parts_path, "trackball_sensor_mount")
+        cutter = import_file(parts_path, "trackball_socket_cutter_34mm")
+        cutter = union([cutter, import_file(parts_path, "trackball_sensor_cutter")])
 
     # return shape, cutter
     return shape, cutter, sensor
