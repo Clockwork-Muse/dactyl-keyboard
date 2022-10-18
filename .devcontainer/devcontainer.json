@@ -1,16 +1,16 @@
 // For format details, see https://aka.ms/vscode-remote/devcontainer.json
 {
-    "name": "Dactyl-Manuform generator dev environment",
+    "name": "Dactyl generator dev environment",
     "dockerFile": "Dockerfile",
     "runArgs": [
-        "--name", "dactyl_manuform_generator_dev",
+        "--name", "dactyl_keyboard_generator_dev",
     ],
-    "workspaceFolder": "/workspaces/dactyl_manuform",
+    "workspaceFolder": "/workspaces/dactyl_keyboard",
     "workspaceMount": "source=${localWorkspaceFolder},target=${containerWorkspaceFolder},type=bind,consistency=cached",
     // Additional volumes mounted into the container
     "mounts": [
-        "type=volume,source=dactyl_manuform_generator_dev_vscode_server,target=/home/vscode/.vscode-server/",
-        "type=volume,source=dactyl_manuform_generator_dev_vscode_server_insiders,target=/home/vscode/.vscode-server-insiders/",
+        "type=volume,source=dactyl_keyboard_generator_dev_vscode_server,target=/home/vscode/.vscode-server/",
+        "type=volume,source=dactyl_keyboard_generator_dev_vscode_server_insiders,target=/home/vscode/.vscode-server-insiders/",
     ],
 
     "features": {
