@@ -54,9 +54,13 @@
 
                 "files.exclude": {
                     ".venv": true,
+                    "__pycache__": true,
+                    "*.egg-info": true,
                 },
                 "files.watcherExclude": {
                     ".venv": true,
+                    "__pycache__": true,
+                    "*.egg-info": true,
                 },
                 "files.insertFinalNewline": true,
                 "files.trimFinalNewlines": true,
