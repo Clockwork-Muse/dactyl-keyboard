@@ -1,0 +1,29 @@
+[MASTER]
+
+# A comma-separated list of package or module names from where C extensions may
+# be loaded. Extensions are loading into the active Python interpreter and may
+# run arbitrary code.
+; extension-pkg-allow-list=
+; generated-members=
+
+# Pickle collected data for later comparisons.
+persistent=yes
+
+[FORMAT]
+
+# Number of spaces of indent required inside a hanging or continued line.
+indent-after-paren=4
+
+# String used as indentation unit. This is usually "    " (4 spaces) or "\t" (1  tab).
+indent-string='    '
+
+# Maximum number of characters on a single line.
+max-line-length=160
+
+# Allow the body of an if to be on the same line as the test if there is no else.
+single-line-if-stmt=no
+
+[REPORTS]
+
+# Tells whether to display a full report or only the messages.
+reports=no
