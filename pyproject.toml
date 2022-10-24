@@ -30,7 +30,10 @@ dynamic = ["version"]
 cadquery = ["cadquery==2.2.0b2", "cadquery-ocp==7.6.3a0"]
 solid = ["solidpython"]
 
-
 [project.urls]
 "Homepage" = "https://github.com/joshreve/dactyl-keyboard"
 "Bug Tracker" = "https://github.com/joshreve/dactyl-keyboard/issues"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+packages = ["dactyl_keyboard"]
