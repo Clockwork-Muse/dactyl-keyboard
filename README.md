@@ -33,7 +33,7 @@ As part of the effort to create a new engine I converted the code to cadquery/Op
 Your settings are now created by `generate_configuration.py` or by direct modification of the `run_config.json` file.
 This allows you to save `run_config.json` to share your configuration.
 
-Additionally, the OpenSCAD/solid python and OpenCASCADE/cadquery versions are merged with separate helper functions
+Additionally, the OpenCASCADE/cadquery version uses separate helper functions
 to decouple the generator from the target library.  This also lets me stay sane by only modifying one file for most updates.
 Running `dactyl_manuform.py` will automatically load the `run_config.json` file.
 
@@ -173,9 +173,6 @@ You can install the application in a regular python environment, but it is not r
 * [Install scipy](https://pypi.org/project/scipy/), easiest method is `pip install scipy` or `pip3 install scipy` on linux.
 * [Install cadquery](https://github.com/CadQuery/cadquery), many options (see link), but easiest method is `conda install -c conda-forge -c cadquery cadquery=2`.  Props to the creators/maintainers, this has the power of Open CASCADE with nearing the simplicity of OpenSCAD.
 
-**OpenSCAD install**
-* [Install SolidPython](https://pypi.org/project/solidpython/), easiest method is `pip install solidpython` or `pip3 install solidpython` on linux.
-* [Install OpenSCAD](http://www.openscad.org/)
 
 ## Generating the design
 

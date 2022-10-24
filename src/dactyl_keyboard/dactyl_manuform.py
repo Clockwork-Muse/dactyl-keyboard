@@ -44,7 +44,7 @@ try:
     print('Found Current Engine in Config = {}'.format(ENGINE))
 except Exception:
     print('Engine Not Found in Config')
-    ENGINE = 'solid'
+    ENGINE = 'cadquery'
     # ENGINE = 'cadquery'
     print('Setting Current Engine = {}'.format(ENGINE))
 
@@ -65,8 +65,6 @@ parts_path = files("dactyl_keyboard.parts")
 
 if ENGINE == 'cadquery':
     from . helpers_cadquery import *
-else:
-    from helpers_solid import *
 
 ####################################################
 # END HELPER FUNCTIONS
