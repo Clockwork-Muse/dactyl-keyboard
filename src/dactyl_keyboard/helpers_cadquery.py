@@ -10,6 +10,7 @@ from scipy.spatial import ConvexHull as sphull
 
 debug_trace = False
 
+
 def debugprint(info):
     if debug_trace:
         print(info)
@@ -93,6 +94,7 @@ def intersect(shape1, shape2):
     else:
         return shape1
 
+
 def face_from_points(points):
     # debugprint('face_from_points()')
     edges = []
@@ -169,9 +171,6 @@ def triangle_hulls(shapes):
         hulls.append(hull_from_shapes(shapes[i: (i + 3)]))
 
     return union(hulls)
-
-
-
 
 
 def bottom_hull(p, height=0.001):
