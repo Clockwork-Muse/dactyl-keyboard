@@ -27,7 +27,7 @@ dependencies = [
 dynamic = ["version"]
 
 [project.optional-dependencies]
-cadquery = ["cadquery==2.2.0b2", "cadquery-ocp==7.6.3a0"]
+cadquery = ["cadquery==2.2.0b2", "cadquery-ocp==7.6.3a0", "scipy"]
 solid = ["solidpython"]
 
 [project.urls]
