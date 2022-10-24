@@ -1,6 +1,11 @@
 *~
 \#*\#
 
+.venv
+*.egg-info
+build
+__pycache__
+
 .repl-*
 .nrepl-*
 
