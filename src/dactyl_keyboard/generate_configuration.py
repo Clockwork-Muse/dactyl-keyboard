@@ -479,7 +479,7 @@ def save_config():
     got_opts = False
     for opt, arg in opts:
         if opt in ('--update'):
-            with open(os.path.join(r"..", "configs", arg + '.json'), mode='r') as fid:
+            with open(arg, mode='r') as fid:
                 data = json.load(fid)
                 shape_config.update(data)
             got_opts = True
@@ -492,7 +492,7 @@ def save_config():
             got_opts = True
 
     if got_opts:
-        with open(os.path.join(r"..", "configs", shape_config['config_name'] + '.json'), mode='w') as fid:
+        with open(shape_config['config_name'] + '.json', mode='w') as fid:
             json.dump(shape_config, fid, indent=4)
 
     else:

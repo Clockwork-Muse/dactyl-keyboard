@@ -23,20 +23,15 @@ for item in cfg.shape_config:
     locals()[item] = cfg.shape_config[item]
 
 if len(sys.argv) <= 1:
-    print("NO CONFIGURATION SPECIFIED, USING run_config.json")
-    with open(os.path.join(r".", 'run_config.json'), mode='r') as fid:
-        data = json.load(fid)
-
+    print("NO CONFIGURATION SPECIFIED, USING DEFAULT CONFIGURATION")
 else:
-    ## CHECK FOR CONFIG FILE AND WRITE TO ANY VARIABLES IN FILE.
+    # CHECK FOR CONFIG FILE AND WRITE TO ANY VARIABLES IN FILE.
     opts, args = getopt.getopt(sys.argv[1:], "", ["config="])
     for opt, arg in opts:
         if opt in ('--config'):
-            with open(os.path.join(r"..", "configs", arg + '.json'), mode='r') as fid:
-                data = json.load(fid)
-
-for item in data:
-    locals()[item] = data[item]
+            with open(arg, mode='rt', encoding="utf-8") as fid:
+                for item in json.load(fid):
+                    locals()[item] = data[item]
 
 
 # Really rough setup.  Check for ENGINE, set it not present from configuration.

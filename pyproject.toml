@@ -35,6 +35,7 @@ dependencies = [
 
 [project.scripts]
 "dactyl-keyboard" = "dactyl_keyboard.dactyl_manuform:run"
+"dactyl-generate-configuration" = "dactyl_keyboard.generate_configuration:save_config"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
