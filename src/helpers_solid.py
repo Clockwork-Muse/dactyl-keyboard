@@ -2,9 +2,11 @@ import solid as sl
 
 debug_trace = False
 
+
 def debugprint(info):
     if debug_trace:
         print(info)
+
 
 def box(width, height, depth):
     return sl.cube([width, height, depth], center=True)
@@ -85,6 +87,7 @@ def intersect(shape1, shape2):
     else:
         return shape1
 
+
 def hull_from_points(points):
     return sl.hull()(*points)
 
@@ -111,7 +114,6 @@ def triangle_hulls(shapes):
     return union(hulls)
 
 
-
 def bottom_hull(p, height=0.001):
     debugprint("bottom_hull()")
     shape = None
@@ -125,6 +127,7 @@ def bottom_hull(p, height=0.001):
             shape = t_shape
         shape = sl.hull()(p, shape, t_shape)
     return shape
+
 
 def polyline(point_list):
     return sl.polygon(point_list)

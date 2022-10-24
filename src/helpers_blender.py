@@ -10,9 +10,11 @@ from contextlib import contextmanager
 
 debug_trace = False
 
+
 def debugprint(info):
     if debug_trace:
         print(info)
+
 
 def box(width, height, depth):
     return bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0), scale=(width, height, depth))
@@ -22,7 +24,6 @@ def cylinder(radius, height, segments=100):
     return bpy.ops.mesh.primitive_cylinder_add(
         vertices=segments, radius=radius, depth=height, location=(0, 0, 0), rotation=(0, 0, 0)
     )
-
 
 
 def sphere(radius):
@@ -39,10 +40,13 @@ def rotate(shape, angle):
     bpy.ops.transform.rotate(value=-radians(angle[2]), orient_axis='Z', center_override=(0.0, 0.0, 0.0))
     return
 
+
 def translate(shape, vector):
 
-    bpy.ops.transform.translate(value=vector, orient_type='GLOBAL', orient_matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1)), orient_matrix_type='GLOBAL', mirror=True, use_proportional_edit=False, proportional_edit_falloff='SMOOTH', proportional_size=1, use_proportional_connected=False, use_proportional_projected=False)
+    bpy.ops.transform.translate(value=vector, orient_type='GLOBAL', orient_matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1)), orient_matrix_type='GLOBAL', mirror=True,
+                                use_proportional_edit=False, proportional_edit_falloff='SMOOTH', proportional_size=1, use_proportional_connected=False, use_proportional_projected=False)
     return
+
 
 def mirror(shape, plane=None):
     debugprint('mirror()')
