@@ -1,4 +1,5 @@
 from importlib.abc import Traversable
+from importlib.resources import as_file
 import os
 from shutil import copyfileobj
 import tempfile
@@ -227,15 +228,8 @@ def extrude_poly(outer_poly, inner_polys=None, height=1):  # vector=(0,0,1)):
 def import_file(parts_path: Traversable, fname, convexity=None):
     print("IMPORTING FROM {}".format(fname))
     name_with_extension = fname + ".step"
-    with tempfile.NamedTemporaryFile(suffix=name_with_extension, delete=False) as extracted:
-        with parts_path.joinpath(name_with_extension).open(mode="rb") as source_data:
-            copyfileobj(source_data, extracted)
-        extracted.close()
-        imported = cq.Workplane('XY').add(cq.importers.importShape(
-            cq.exporters.ExportTypes.STEP,
-            extracted.name))
-        os.unlink(extracted.name)
-        return imported
+    with as_file(parts_path.joinpath(name_with_extension)) as extracted:
+        return cq.Workplane('XY').add(cq.importers.importShape(cq.exporters.ExportTypes.STEP, extracted))
 
 
 def export_file(shape, fname):
