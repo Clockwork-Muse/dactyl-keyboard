@@ -1,3 +1,9 @@
+import sys
+if sys.version_info[:2] > (3, 9):
+    import importlib.resources as resources
+else:
+    import importlib_resources as resources
+
 import solid as sl
 
 debug_trace = False
@@ -145,9 +151,10 @@ def extrude_poly(outer_poly, inner_polys=None, height=1):
         return sl.linear_extrude(height=height, twist=0, convexity=0, center=True)(outer_poly)
 
 
-def import_file(fname, convexity=2):
+def import_file(parts_path: resources.abc.Traversable, fname: str, convexity=2):
     print("IMPORTING FROM {}".format(fname))
-    return sl.import_stl(fname.replace("\\", "/") + ".stl", convexity=convexity)
+    with resources.as_file(parts_path.joinpath(fname + ".stl")) as extracted:
+        return sl.import_stl(extracted, convexity=convexity)
 
 
 def export_file(shape, fname):

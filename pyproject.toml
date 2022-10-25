@@ -23,6 +23,7 @@ classifiers = [
 ]
 dependencies = [
     "numpy",
+    "importlib-resources; python_version<'3.9'",
 ]
 dynamic = ["version"]
 
@@ -33,6 +34,9 @@ solid = ["solidpython"]
 [project.urls]
 "Homepage" = "https://github.com/joshreve/dactyl-keyboard"
 "Bug Tracker" = "https://github.com/joshreve/dactyl-keyboard/issues"
+
+[project.scripts]
+"dactyl-keyboard" = "dactyl_keyboard.dactyl_manuform:run"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

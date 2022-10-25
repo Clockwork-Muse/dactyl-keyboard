@@ -1,3 +1,9 @@
+import sys
+if sys.version_info[:2] > (3, 9):
+    import importlib.resources as resources
+else:
+    import importlib_resources as resources
+
 import cadquery as cq
 from scipy.spatial import ConvexHull as sphull
 import numpy as np
@@ -219,11 +225,10 @@ def extrude_poly(outer_poly, inner_polys=None, height=1):  # vector=(0,0,1)):
         cq.Solid.extrudeLinear(outerWire=outer_wires, innerWires=inner_wires, vecNormal=cq.Vector(0, 0, height)))
 
 
-def import_file(fname, convexity=None):
+def import_file(parts_path: resources.abc.Traversable, fname: str, convexity=None):
     print("IMPORTING FROM {}".format(fname))
-    return cq.Workplane('XY').add(cq.importers.importShape(
-        cq.exporters.ExportTypes.STEP,
-        fname + ".step"))
+    with resources.as_file(parts_path.joinpath(fname + ".step")) as extracted:
+        return cq.Workplane('XY').add(cq.importers.importShape(cq.exporters.ExportTypes.STEP, extracted))
 
 
 def export_file(shape, fname):

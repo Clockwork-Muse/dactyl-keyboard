@@ -1,5 +1,4 @@
 import math
-import generate_configuration as cfg
 import numpy as np
 from numpy import pi
 import os.path as path
@@ -9,7 +8,12 @@ import json
 import os
 import copy
 
-from scipy.spatial import ConvexHull as sphull
+if sys.version_info[:2] > (3, 9):
+    import importlib.resources as resources
+else:
+    import importlib_resources as resources
+
+from . generate_configuration import shape_config
 
 
 def deg2rad(degrees: float) -> float:
@@ -25,24 +29,19 @@ def rad2deg(rad: float) -> float:
 ###############################################
 
 # IMPORT DEFAULT CONFIG IN CASE NEW PARAMETERS EXIST
-for item in cfg.shape_config:
-    locals()[item] = cfg.shape_config[item]
+for key, item in shape_config.items():
+    locals()[key] = item
 
 if len(sys.argv) <= 1:
-    print("NO CONFIGURATION SPECIFIED, USING run_config.json")
-    with open(os.path.join(r".", 'run_config.json'), mode='r') as fid:
-        data = json.load(fid)
-
+    print("NO CONFIGURATION SPECIFIED, USING DEFAULT CONFIGURATION")
 else:
     # CHECK FOR CONFIG FILE AND WRITE TO ANY VARIABLES IN FILE.
     opts, args = getopt.getopt(sys.argv[1:], "", ["config="])
     for opt, arg in opts:
         if opt in ('--config'):
-            with open(os.path.join(r"..", "configs", arg + '.json'), mode='r') as fid:
-                data = json.load(fid)
-
-for item in data:
-    locals()[item] = data[item]
+            with open(arg, mode="rt", encoding="utf-8") as fid:
+                for key, item in json.load(fid).items():
+                    locals()[key] = item
 
 
 # Really rough setup.  Check for ENGINE, set it not present from configuration.
@@ -55,11 +54,11 @@ except Exception:
     print('Setting Current Engine = {}'.format(ENGINE))
 
 if save_dir in ['', None, '.']:
-    save_path = path.join(r"..", "things")
-    parts_path = path.join(r"..", "src", "parts")
+    save_path = path.join(r".", "things")
 else:
-    save_path = path.join(r"..", "things", save_dir)
-    parts_path = path.join(r"..", r"..", "src", "parts")
+    save_path = path.join(r".", "things", save_dir)
+
+parts_path = resources.files("dactyl_keyboard.parts")
 
 ###############################################
 # END EXTREMELY UGLY BOOTSTRAP
@@ -70,9 +69,9 @@ else:
 ####################################################
 
 if ENGINE == 'cadquery':
-    from helpers_cadquery import *
+    from . helpers_cadquery import *
 else:
-    from helpers_solid import *
+    from . helpers_solid import *
 
 ####################################################
 # END HELPER FUNCTIONS
@@ -118,7 +117,7 @@ else:
 
 if 'HS_' in plate_style:
     symmetry = "asymmetric"
-    plate_file = path.join(parts_path, r"hot_swap_plate")
+    plate_file = "hot_swap_plate"
     plate_offset = 0.0
 
 if (trackball_in_wall or ('TRACKBALL' in thumb_style)) and not ball_side == 'both':
@@ -241,7 +240,7 @@ def single_plate(cylinder_segments=100, side="right"):
         plate = difference(plate, [undercut])
 
     if plate_file is not None:
-        socket = import_file(plate_file)
+        socket = import_file(parts_path, plate_file)
         socket = translate(socket, [0, 0, plate_thickness + plate_offset])
         plate = union([plate, socket])
 
@@ -311,15 +310,10 @@ def trackball_socket(segments=100, side="right"):
         sensor = None
 
     else:
-        tb_file = path.join(parts_path, r"trackball_socket_body_34mm")
-        tbcut_file = path.join(parts_path, r"trackball_socket_cutter_34mm")
-        sens_file = path.join(parts_path, r"trackball_sensor_mount")
-        senscut_file = path.join(parts_path, r"trackball_sensor_cutter")
-
-        shape = import_file(tb_file)
-        sensor = import_file(sens_file)
-        cutter = import_file(tbcut_file)
-        cutter = union([cutter, import_file(senscut_file)])
+        shape = import_file(parts_path, "trackball_socket_body_34mm")
+        sensor = import_file(parts_path, "trackball_sensor_mount")
+        cutter = import_file(parts_path, "trackball_socket_cutter_34mm")
+        cutter = union([cutter, import_file(parts_path, "trackball_sensor_cutter")])
 
     # return shape, cutter
     return shape, cutter, sensor
