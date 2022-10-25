@@ -1,6 +1,4 @@
 import math
-import numpy as np
-from numpy import pi
 import os.path as path
 import getopt
 import sys
@@ -13,15 +11,9 @@ if sys.version_info[:2] > (3, 9):
 else:
     import importlib_resources as resources
 
+import numpy as np
+
 from . generate_configuration import shape_config
-
-
-def deg2rad(degrees: float) -> float:
-    return degrees * pi / 180
-
-
-def rad2deg(rad: float) -> float:
-    return rad * 180 / pi
 
 
 ###############################################
@@ -143,11 +135,11 @@ if oled_mount_type is not None and oled_mount_type != "NONE":
 
 
 cap_top_height = plate_thickness + sa_profile_key_height
-row_radius = ((mount_height + extra_height) / 2) / (np.sin(alpha / 2)) + cap_top_height
+row_radius = ((mount_height + extra_height) / 2) / (math.sin(alpha / 2)) + cap_top_height
 column_radius = (
-    ((mount_width + extra_width) / 2) / (np.sin(beta / 2))
+    ((mount_width + extra_width) / 2) / (math.sin(beta / 2))
 ) + cap_top_height
-column_x_delta = -1 - column_radius * np.sin(beta)
+column_x_delta = -1 - column_radius * math.sin(beta)
 column_base_angle = beta * (centercol - 2)
 
 
@@ -441,8 +433,8 @@ def rotate_around_x(position, angle):
     t_matrix = np.array(
         [
             [1, 0, 0],
-            [0, np.cos(angle), -np.sin(angle)],
-            [0, np.sin(angle), np.cos(angle)],
+            [0, math.cos(angle), -math.sin(angle)],
+            [0, math.sin(angle), math.cos(angle)],
         ]
     )
     return np.matmul(t_matrix, position)
@@ -452,9 +444,9 @@ def rotate_around_y(position, angle):
     # debugprint('rotate_around_y()')
     t_matrix = np.array(
         [
-            [np.cos(angle), 0, np.sin(angle)],
+            [math.cos(angle), 0, math.sin(angle)],
             [0, 1, 0],
-            [-np.sin(angle), 0, np.cos(angle)],
+            [-math.sin(angle), 0, math.cos(angle)],
         ]
     )
     return np.matmul(t_matrix, position)
@@ -475,7 +467,7 @@ def apply_key_geometry(
     column_angle = beta * (centercol - column)
 
     if column_style == "orthographic":
-        column_z_delta = column_radius * (1 - np.cos(column_angle))
+        column_z_delta = column_radius * (1 - math.cos(column_angle))
         shape = translate_fn(shape, [0, 0, -row_radius])
         shape = rotate_x_fn(shape, alpha * (centerrow - row))
         shape = translate_fn(shape, [0, 0, row_radius])
@@ -511,12 +503,12 @@ def apply_key_geometry(
 
 def x_rot(shape, angle):
     # debugprint('x_rot()')
-    return rotate(shape, [rad2deg(angle), 0, 0])
+    return rotate(shape, [math.degrees(angle), 0, 0])
 
 
 def y_rot(shape, angle):
     # debugprint('y_rot()')
-    return rotate(shape, [0, rad2deg(angle), 0])
+    return rotate(shape, [0, math.degrees(angle), 0])
 
 
 def key_place(shape, column, row):
@@ -1245,7 +1237,7 @@ def mini_thumb_15x_layout(shape):
 
 def mini_thumbcaps():
     t1 = mini_thumb_1x_layout(keycap(1))
-    t15 = mini_thumb_15x_layout(rotate(keycap(1), [0, 0, rad2deg(pi / 2)]))
+    t15 = mini_thumb_15x_layout(rotate(keycap(1), [0, 0, 90]))
     return t1.add(t15)
 
 
@@ -1431,7 +1423,6 @@ def minidox_thumb_fx_layout(shape):
 
 def minidox_thumbcaps():
     t1 = minidox_thumb_1x_layout(keycap(1))
-    # t1.add(minidox_thumb_15x_layout(rotate(keycap(1), [0, 0, rad2deg(pi / 2)])))
     return t1
 
 
@@ -1606,7 +1597,7 @@ def carbonfet_thumb_15x_layout(shape, plate=True):
 
 def carbonfet_thumbcaps():
     t1 = carbonfet_thumb_1x_layout(keycap(1))
-    t15 = carbonfet_thumb_15x_layout(rotate(keycap(1.5), [0, 0, rad2deg(pi / 2)]))
+    t15 = carbonfet_thumb_15x_layout(rotate(keycap(1.5), [0, 0, 90]))
     return t1.add(t15)
 
 
@@ -1874,8 +1865,6 @@ def trackball_layout(shape):
 
 def tbjs_thumbcaps():
     t1 = tbjs_thumb_1x_layout(keycap(1))
-    # t1 = tbjs_thumb_fx_layout(keycap(1))
-    # t1.add(tbjs_thumb_15x_layout(rotate(keycap(1), [0, 0, rad2deg(pi / 2)])))
     return t1
 
 
@@ -3397,10 +3386,10 @@ if oled_center_row is not None:
     oled_mount_location_xyz = (np.array(base_pt1)+np.array(base_pt2))/2. + np.array(((-left_wall_x_offset/2), 0, 0)) + np.array(oled_translation_offset)
     oled_mount_location_xyz[2] = (oled_mount_location_xyz[2] + base_pt0[2])/2
 
-    angle_x = np.arctan2(base_pt1[2] - base_pt2[2], base_pt1[1] - base_pt2[1])
-    angle_z = np.arctan2(base_pt1[0] - base_pt2[0], base_pt1[1] - base_pt2[1])
+    angle_x = math.atan2(base_pt1[2] - base_pt2[2], base_pt1[1] - base_pt2[1])
+    angle_z = math.atan2(base_pt1[0] - base_pt2[0], base_pt1[1] - base_pt2[1])
 
-    oled_mount_rotation_xyz = (rad2deg(angle_x), 0, -rad2deg(angle_z)) + np.array(oled_rotation_offset)
+    oled_mount_rotation_xyz = (math.degrees(angle_x), 0, -math.degrees(angle_z)) + np.array(oled_rotation_offset)
 
 
 def generate_trackball(pos, rot):
@@ -3476,9 +3465,9 @@ def tbiw_position_rotation():
 
     # tbiw_mount_location_xyz[2] = (oled_translation_offset[2] + base_pt0[2])/2
 
-    angle_x = np.arctan2(base_pt1[2] - base_pt2[2], base_pt1[1] - base_pt2[1])
-    angle_z = np.arctan2(base_pt1[0] - base_pt2[0], base_pt1[1] - base_pt2[1])
-    tbiw_mount_rotation_xyz = (rad2deg(angle_x), 0, rad2deg(angle_z)) + np.array(tbiw_rotation_offset)
+    angle_x = math.atan2(base_pt1[2] - base_pt2[2], base_pt1[1] - base_pt2[1])
+    angle_z = math.atan2(base_pt1[0] - base_pt2[0], base_pt1[1] - base_pt2[1])
+    tbiw_mount_rotation_xyz = (math.degrees(angle_x), 0, math.degrees(angle_z)) + np.array(tbiw_rotation_offset)
 
     return tbiw_mount_location_xyz, tbiw_mount_rotation_xyz
 
@@ -3519,14 +3508,12 @@ def oled_position_rotation(side='right'):
         oled_mount_location_xyz = (np.array(base_pt1)+np.array(base_pt2))/2. + np.array(((-_left_wall_x_offset/2), 0, 0)) + np.array(_oled_translation_offset)
         oled_mount_location_xyz[2] = (oled_mount_location_xyz[2] + base_pt0[2])/2
 
-        angle_x = np.arctan2(base_pt1[2] - base_pt2[2], base_pt1[1] - base_pt2[1])
-        angle_z = np.arctan2(base_pt1[0] - base_pt2[0], base_pt1[1] - base_pt2[1])
+        angle_x = math.atan2(base_pt1[2] - base_pt2[2], base_pt1[1] - base_pt2[1])
+        angle_z = math.atan2(base_pt1[0] - base_pt2[0], base_pt1[1] - base_pt2[1])
         if trackball_in_wall and (side == ball_side or ball_side == 'both'):
-            # oled_mount_rotation_xyz = (0, rad2deg(angle_x), -rad2deg(angle_z)-90) + np.array(oled_rotation_offset)
-            # oled_mount_rotation_xyz = (rad2deg(angle_x)*.707, rad2deg(angle_x)*.707, -45) + np.array(oled_rotation_offset)
-            oled_mount_rotation_xyz = (0, rad2deg(angle_x), -90) + np.array(_oled_rotation_offset)
+            oled_mount_rotation_xyz = (0, math.degrees(angle_x), -90) + np.array(_oled_rotation_offset)
         else:
-            oled_mount_rotation_xyz = (rad2deg(angle_x), 0, -rad2deg(angle_z)) + np.array(_oled_rotation_offset)
+            oled_mount_rotation_xyz = (math.degrees(angle_x), 0, -math.degrees(angle_z)) + np.array(_oled_rotation_offset)
 
     return oled_mount_location_xyz, oled_mount_rotation_xyz
 
