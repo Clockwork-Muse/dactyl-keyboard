@@ -1,8 +1,9 @@
-import math
-import sys
-import getopt
-import os
+import argparse
 import json
+import logging
+import math
+import pathlib
+from typing import Optional
 
 
 shape_config = {
@@ -466,42 +467,25 @@ shape_config = {
 
 }
 
-####################################
-# END CONFIGURATION SECTION
-####################################
 
+class GenerateConfigAction(argparse.Action):
+    """
+    Generate a file with default configuration settings.
+    """
 
-def save_config():
-    # Check to see if the user has specified an alternate config
-    opts, args = getopt.getopt(sys.argv[1:], "", ["config=", "update="])
-    got_opts = False
-    for opt, arg in opts:
-        if opt in ('--update'):
-            with open(os.path.join(r"..", "configs", arg + '.json'), mode='r') as fid:
-                data = json.load(fid)
-                shape_config.update(data)
-            got_opts = True
+    def __init__(self, option_strings, dest, **kwargs):
+        kwargs.update({
+            'nargs': "?",
+            'const': pathlib.Path("default.json"),
+            'default': argparse.SUPPRESS,
+            'type': pathlib.Path,
+            'required': False,
+            'help': "Generate the default settings configuration file, and exit."
+        })
+        super().__init__(option_strings, dest, **kwargs)
 
-    for opt, arg in opts:
-        if opt in ('--config'):
-            # If a config file was specified, set the config_name and save_dir
-            shape_config['save_dir'] = arg
-            shape_config['config_name'] = arg
-            got_opts = True
-
-    # Write the config to ./configs/<config_name>.json
-    if got_opts:
-        with open(os.path.join(r"..", "configs", shape_config['config_name'] + '.json'), mode='w') as fid:
-            json.dump(shape_config, fid, indent=4)
-
-    else:
-        with open(os.path.join(r".", 'run_config.json'), mode='w') as fid:
-            json.dump(shape_config, fid, indent=4)
-
-
-if __name__ == '__main__':
-    save_config()
-
-    # HERE FOR QUICK TESTING, SHOULD BE COMMENTED ON COMMIT
-    # from dactyl_manuform import *
-    # run()
+    def __call__(self, _parser: argparse.ArgumentParser, _namespace: argparse.Namespace, values: pathlib.Path, _option_string: Optional[str] = None):
+        with values.open(mode="wt", encoding="utf-8") as opened_file:
+            logging.info("Generating default configuration to %s", values)
+            json.dump(shape_config, opened_file, indent=4)
+        exit()

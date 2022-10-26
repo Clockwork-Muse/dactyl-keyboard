@@ -1,10 +1,12 @@
-import math
-import os.path as path
-import getopt
-import sys
-import json
-import os
+import argparse
 import copy
+import json
+import logging
+import math
+import os
+import os.path as path
+import pathlib
+import sys
 
 if sys.version_info[:2] > (3, 9):
     import importlib.resources as resources
@@ -13,7 +15,12 @@ else:
 
 import numpy as np
 
-from . generate_configuration import shape_config
+from . generate_configuration import GenerateConfigAction, shape_config
+
+parser = argparse.ArgumentParser(description="Generate a dactyl keyboard.")
+parser.add_argument("--generate-config", action=GenerateConfigAction)
+parser.add_argument("--config", default=argparse.SUPPRESS, type=pathlib.Path, help="A config file to control keyboard generation.")
+args = parser.parse_args()
 
 
 ###############################################
@@ -24,16 +31,12 @@ from . generate_configuration import shape_config
 for key, item in shape_config.items():
     locals()[key] = item
 
-if len(sys.argv) <= 1:
-    print("NO CONFIGURATION SPECIFIED, USING DEFAULT CONFIGURATION")
+if not "config" in args:
+    logging.info("NO CONFIGURATION SPECIFIED, USING DEFAULT CONFIGURATION")
 else:
-    # CHECK FOR CONFIG FILE AND WRITE TO ANY VARIABLES IN FILE.
-    opts, args = getopt.getopt(sys.argv[1:], "", ["config="])
-    for opt, arg in opts:
-        if opt in ('--config'):
-            with open(arg, mode="rt", encoding="utf-8") as fid:
-                for key, item in json.load(fid).items():
-                    locals()[key] = item
+    with open(args.config, mode="rt", encoding="utf-8") as fid:
+        for key, item in json.load(fid).items():
+            locals()[key] = item
 
 
 # Really rough setup.  Check for ENGINE, set it not present from configuration.
