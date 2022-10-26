@@ -1,3 +1,4 @@
+import logging
 import sys
 if sys.version_info[:2] > (3, 9):
     import importlib.resources as resources
@@ -5,13 +6,6 @@ else:
     import importlib_resources as resources
 
 import solid as sl
-
-debug_trace = False
-
-
-def debugprint(info):
-    if debug_trace:
-        print(info)
 
 
 def box(width, height, depth):
@@ -43,7 +37,7 @@ def translate(shape, vector):
 
 
 def mirror(shape, plane=None):
-    debugprint('mirror()')
+    logging.debug("mirror()")
     planes = {
         'XY': [0, 0, 1],
         'YX': [0, 0, -1],
@@ -56,7 +50,7 @@ def mirror(shape, plane=None):
 
 
 def union(shapes):
-    debugprint('union()')
+    logging.debug("union()")
     shape = None
     for item in shapes:
         if item is not None:
@@ -68,7 +62,7 @@ def union(shapes):
 
 
 def add(shapes):
-    debugprint('union()')
+    logging.debug("union()")
     shape = None
     for item in shapes:
         if item is not None:
@@ -80,7 +74,7 @@ def add(shapes):
 
 
 def difference(shape, shapes):
-    debugprint('difference()')
+    logging.debug("difference()")
     for item in shapes:
         if item is not None:
             shape -= item
@@ -112,7 +106,7 @@ def tess_hull(shapes, sl_tol=.5, sl_angTol=1):
 
 
 def triangle_hulls(shapes):
-    debugprint('triangle_hulls()')
+    logging.debug("triangle_hulls()")
     hulls = []
     for i in range(len(shapes) - 2):
         hulls.append(hull_from_shapes(shapes[i: (i + 3)]))
@@ -121,7 +115,7 @@ def triangle_hulls(shapes):
 
 
 def bottom_hull(p, height=0.001):
-    debugprint("bottom_hull()")
+    logging.debug("bottom_hull()")
     shape = None
     for item in p:
         proj = sl.projection()(p)
@@ -152,16 +146,15 @@ def extrude_poly(outer_poly, inner_polys=None, height=1):
 
 
 def import_file(parts_path: resources.abc.Traversable, fname: str, convexity=2):
-    print("IMPORTING FROM {}".format(fname))
+    logging.info("IMPORTING FROM %s", fname)
     with resources.as_file(parts_path.joinpath(fname + ".stl")) as extracted:
         return sl.import_stl(extracted, convexity=convexity)
 
 
 def export_file(shape, fname):
-    print("EXPORTING TO {}".format(fname))
+    logging.info("EXPORTING TO %s", fname)
     sl.scad_render_to_file(shape, fname + ".scad")
 
 
 def export_dxf(shape, fname):
-    print("NO DXF EXPORT FOR SOLID".format(fname))
-    pass
+    logging.warn("NO DXF EXPORT FOR SOLID %s", fname)

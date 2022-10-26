@@ -7,6 +7,7 @@ import os
 import os.path as path
 import pathlib
 import sys
+from typing import Optional
 
 if sys.version_info[:2] > (3, 9):
     import importlib.resources as resources
@@ -17,11 +18,40 @@ import numpy as np
 
 from . generate_configuration import GenerateConfigAction, shape_config
 
+
+class LogLevelAction(argparse.Action):
+    """
+    Set the log level
+    """
+
+    log_levels = {
+        'DEBUG': logging.DEBUG,
+        'INFO': logging.INFO,
+        'WARNING': logging.WARNING,
+        'ERROR': logging.ERROR,
+        'CRITICAL': logging.CRITICAL,
+    }
+
+    def __init__(self, option_strings, dest: str, **kwargs):
+        kwargs.update({
+            'default': "INFO",
+            'type': str,
+            'choices': self.log_levels.keys(),
+            'help': "The log level to use."
+        })
+        super().__init__(option_strings, dest, **kwargs)
+
+    def __call__(self, _parser: argparse.ArgumentParser, namespace: argparse.Namespace, values: pathlib.Path, _option_string: Optional[str] = None):
+        setattr(namespace, self.dest, values)
+
+
 parser = argparse.ArgumentParser(description="Generate a dactyl keyboard.")
 parser.add_argument("--generate-config", action=GenerateConfigAction)
 parser.add_argument("--config", default=argparse.SUPPRESS, type=pathlib.Path, help="A config file to control keyboard generation.")
+parser.add_argument("--log-level", action=LogLevelAction)
 args = parser.parse_args()
 
+logging.basicConfig(level=args.log_level)
 
 ###############################################
 # EXTREMELY UGLY BUT FUNCTIONAL BOOTSTRAP
@@ -38,15 +68,7 @@ else:
         for key, item in json.load(fid).items():
             locals()[key] = item
 
-
-# Really rough setup.  Check for ENGINE, set it not present from configuration.
-try:
-    print('Found Current Engine in Config = {}'.format(ENGINE))
-except Exception:
-    print('Engine Not Found in Config')
-    ENGINE = 'solid'
-    # ENGINE = 'cadquery'
-    print('Setting Current Engine = {}'.format(ENGINE))
+logging.info("Using engine %s", ENGINE)
 
 if save_dir in ['', None, '.']:
     save_path = path.join(r".", "things")
@@ -74,12 +96,6 @@ else:
 
 
 debug_exports = False
-debug_trace = False
-
-
-def debugprint(info):
-    if debug_trace:
-        print(info)
 
 
 if oled_mount_type is not None and oled_mount_type != "NONE":
@@ -432,7 +448,6 @@ def key_pcb():
 
 
 def rotate_around_x(position, angle):
-    # debugprint('rotate_around_x()')
     t_matrix = np.array(
         [
             [1, 0, 0],
@@ -444,7 +459,6 @@ def rotate_around_x(position, angle):
 
 
 def rotate_around_y(position, angle):
-    # debugprint('rotate_around_y()')
     t_matrix = np.array(
         [
             [math.cos(angle), 0, math.sin(angle)],
@@ -465,7 +479,7 @@ def apply_key_geometry(
         column_style=column_style,
 ):
 
-    debugprint('apply_key_geometry()')
+    logging.debug("apply_key_geometry()")
 
     column_angle = beta * (centercol - column)
 
@@ -505,22 +519,20 @@ def apply_key_geometry(
 
 
 def x_rot(shape, angle):
-    # debugprint('x_rot()')
     return rotate(shape, [math.degrees(angle), 0, 0])
 
 
 def y_rot(shape, angle):
-    # debugprint('y_rot()')
     return rotate(shape, [0, math.degrees(angle), 0])
 
 
 def key_place(shape, column, row):
-    debugprint('key_place()')
+    logging.debug("key_place()")
     return apply_key_geometry(shape, translate, x_rot, y_rot, column, row)
 
 
 def add_translate(shape, xyz):
-    debugprint('add_translate()')
+    logging.debug("add_translate()")
     vals = []
     for i in range(len(shape)):
         vals.append(shape[i] + xyz[i])
@@ -528,14 +540,14 @@ def add_translate(shape, xyz):
 
 
 def key_position(position, column, row):
-    debugprint('key_position()')
+    logging.debug("key_position()")
     return apply_key_geometry(
         position, add_translate, rotate_around_x, rotate_around_y, column, row
     )
 
 
 def key_holes(side="right"):
-    debugprint('key_holes()')
+    logging.debug("key_holes()")
     # hole = single_plate()
     holes = []
     for column in range(ncols):
@@ -549,7 +561,7 @@ def key_holes(side="right"):
 
 
 def plate_pcb_cutouts(side="right"):
-    debugprint('plate_pcb_cutouts()')
+    logging.debug("plate_pcb_cutouts()")
     # hole = single_plate()
     cutouts = []
     for column in range(ncols):
@@ -582,7 +594,7 @@ def caps(cap_type="MX"):
 
 
 def web_post():
-    debugprint('web_post()')
+    logging.debug("web_post()")
     post = box(post_size, post_size, web_thickness)
     post = translate(post, (0, 0, plate_thickness - (web_thickness / 2)))
     return post
@@ -622,7 +634,7 @@ def web_post_br(wide=False):
 
 
 def connectors():
-    debugprint('connectors()')
+    logging.debug("connectors()")
     hulls = []
     for column in range(ncols - 1):
         if reduced_inner_cols <= column < (ncols - reduced_outer_cols-1):
@@ -689,8 +701,6 @@ def connectors():
 
 
 def thumborigin():
-    # debugprint('thumborigin()')
-
     corner = cornerrow if reduced_inner_cols > 0 else lastrow
     origin = key_position([mount_width / 2, -(mount_height / 2), 0], 1, corner)
 
@@ -704,7 +714,7 @@ def thumborigin():
 
 
 def default_thumb_tl_place(shape):
-    debugprint('thumb_tl_place()')
+    logging.debug("thumb_tl_place()")
     shape = rotate(shape, [7.5, -18, 10])
     shape = translate(shape, thumborigin())
     shape = translate(shape, [-32.5, -14.5, -2.5])
@@ -712,7 +722,7 @@ def default_thumb_tl_place(shape):
 
 
 def default_thumb_tr_place(shape):
-    debugprint('thumb_tr_place()')
+    logging.debug("thumb_tr_place()")
     shape = rotate(shape, [10, -15, 10])
     shape = translate(shape, thumborigin())
     shape = translate(shape, [-12, -16, 3])
@@ -720,7 +730,7 @@ def default_thumb_tr_place(shape):
 
 
 def default_thumb_mr_place(shape):
-    debugprint('thumb_mr_place()')
+    logging.debug("thumb_mr_place()")
     shape = rotate(shape, [-6, -34, 48])
     shape = translate(shape, thumborigin())
     shape = translate(shape, [-29, -40, -13])
@@ -728,7 +738,7 @@ def default_thumb_mr_place(shape):
 
 
 def default_thumb_ml_place(shape):
-    debugprint('thumb_ml_place()')
+    logging.debug("thumb_ml_place()")
     shape = rotate(shape, [6, -34, 40])
     shape = translate(shape, thumborigin())
     shape = translate(shape, [-51, -25, -12])
@@ -736,7 +746,7 @@ def default_thumb_ml_place(shape):
 
 
 def default_thumb_br_place(shape):
-    debugprint('thumb_br_place()')
+    logging.debug("thumb_br_place()")
     shape = rotate(shape, [-16, -33, 54])
     shape = translate(shape, thumborigin())
     shape = translate(shape, [-37.8, -55.3, -25.3])
@@ -744,7 +754,7 @@ def default_thumb_br_place(shape):
 
 
 def default_thumb_bl_place(shape):
-    debugprint('thumb_bl_place()')
+    logging.debug("thumb_bl_place()")
     shape = rotate(shape, [-4, -35, 52])
     shape = translate(shape, thumborigin())
     shape = translate(shape, [-56.3, -43.3, -23.5])
@@ -752,7 +762,7 @@ def default_thumb_bl_place(shape):
 
 
 def default_thumb_1x_layout(shape, cap=False):
-    debugprint('thumb_1x_layout()')
+    logging.debug("thumb_1x_layout()")
     if cap:
         shape_list = [
             default_thumb_mr_place(rotate(shape, [0, 0, thumb_plate_mr_rotation])),
@@ -787,7 +797,7 @@ def default_thumb_pcb_plate_cutouts(side="right"):
 
 
 def default_thumb_15x_layout(shape, cap=False, plate=True):
-    debugprint('thumb_15x_layout()')
+    logging.debug("thumb_15x_layout()")
     if plate:
         if cap:
             shape = rotate(shape, (0, 0, 90))
@@ -827,7 +837,7 @@ def usize_dimention(Usize=1.5):
 
 
 def adjustable_plate_half(Usize=1.5):
-    debugprint('double_plate()')
+    logging.debug("double_plate()")
     adjustable_plate_height = adjustable_plate_size(Usize)
     top_plate = box(mount_width, adjustable_plate_height, web_thickness)
     top_plate = translate(top_plate,
@@ -837,7 +847,7 @@ def adjustable_plate_half(Usize=1.5):
 
 
 def adjustable_plate(Usize=1.5):
-    debugprint('double_plate()')
+    logging.debug("double_plate()")
     top_plate = adjustable_plate_half(Usize)
     return union((top_plate, mirror(top_plate, 'XZ')))
 
@@ -853,7 +863,7 @@ def adjustable_square_plate(Uwidth=1.5, Uheight=1.5):
 
 
 def double_plate_half():
-    debugprint('double_plate()')
+    logging.debug("double_plate()")
     top_plate = box(mount_width, double_plate_height, web_thickness)
     top_plate = translate(top_plate,
                           [0, (double_plate_height + mount_height) / 2, plate_thickness - (web_thickness / 2)]
@@ -862,7 +872,7 @@ def double_plate_half():
 
 
 def double_plate():
-    debugprint('double_plate()')
+    logging.debug("double_plate()")
     top_plate = double_plate_half()
     return union((top_plate, mirror(top_plate, 'XZ')))
 
@@ -979,7 +989,7 @@ def default_thumbcaps():
 
 
 def default_thumb(side="right"):
-    print('thumb()')
+    logging.debug("thumb()")
     shape = default_thumb_1x_layout(rotate(single_plate(side=side), (0, 0, -90)))
     shape = union([shape, default_thumb_15x_layout(rotate(single_plate(side=side), (0, 0, -90)))])
     shape = union([shape, default_thumb_15x_layout(double_plate(), plate=False)])
@@ -991,35 +1001,35 @@ def default_thumb(side="right"):
 
 
 def thumb_post_tr():
-    debugprint('thumb_post_tr()')
+    logging.debug("thumb_post_tr()")
     return translate(web_post(),
                      [(mount_width / 2) - post_adj, ((mount_height/2) + double_plate_height) - post_adj, 0]
                      )
 
 
 def thumb_post_tl():
-    debugprint('thumb_post_tl()')
+    logging.debug("thumb_post_tl()")
     return translate(web_post(),
                      [-(mount_width / 2) + post_adj, ((mount_height/2) + double_plate_height) - post_adj, 0]
                      )
 
 
 def thumb_post_bl():
-    debugprint('thumb_post_bl()')
+    logging.debug("thumb_post_bl()")
     return translate(web_post(),
                      [-(mount_width / 2) + post_adj, -((mount_height/2) + double_plate_height) + post_adj, 0]
                      )
 
 
 def thumb_post_br():
-    debugprint('thumb_post_br()')
+    logging.debug("thumb_post_br()")
     return translate(web_post(),
                      [(mount_width / 2) - post_adj, -((mount_height/2) + double_plate_height) + post_adj, 0]
                      )
 
 
 def default_thumb_connectors():
-    print('thumb_connectors()')
+    logging.debug('thumb_connectors()')
     hulls = []
 
     # Top two
@@ -1446,28 +1456,28 @@ def minidox_thumb_pcb_plate_cutouts(side="right"):
 
 
 def minidox_thumb_post_tr():
-    debugprint('thumb_post_tr()')
+    logging.debug("thumb_post_tr()")
     return translate(web_post(),
                      [(mount_width / 2) - post_adj, ((mount_height/2) + adjustable_plate_size(minidox_Usize)) - post_adj, 0]
                      )
 
 
 def minidox_thumb_post_tl():
-    debugprint('thumb_post_tl()')
+    logging.debug("thumb_post_tl()")
     return translate(web_post(),
                      [-(mount_width / 2) + post_adj, ((mount_height/2) + adjustable_plate_size(minidox_Usize)) - post_adj, 0]
                      )
 
 
 def minidox_thumb_post_bl():
-    debugprint('thumb_post_bl()')
+    logging.debug("thumb_post_bl()")
     return translate(web_post(),
                      [-(mount_width / 2) + post_adj, -((mount_height/2) + adjustable_plate_size(minidox_Usize)) + post_adj, 0]
                      )
 
 
 def minidox_thumb_post_br():
-    debugprint('thumb_post_br()')
+    logging.debug("thumb_post_br()")
     return translate(web_post(),
                      [(mount_width / 2) - post_adj, -((mount_height/2) + adjustable_plate_size(minidox_Usize)) + post_adj, 0]
                      )
@@ -1787,7 +1797,7 @@ def tbjs_place(shape):
 
 
 def tbjs_thumb_tl_place(shape):
-    debugprint('thumb_tr_place()')
+    logging.debug("thumb_tr_place()")
     # Modifying to make a "ring" of keys
     shape = rotate(shape, [0, 0, 0])
     t_off = tbjs_key_translation_offsets[0]
@@ -1800,7 +1810,7 @@ def tbjs_thumb_tl_place(shape):
 
 
 def tbjs_thumb_mr_place(shape):
-    debugprint('thumb_mr_place()')
+    logging.debug("thumb_mr_place()")
     shape = rotate(shape, [0, 0, 0])
     shape = rotate(shape, tbjs_key_rotation_offsets[1])
     t_off = tbjs_key_translation_offsets[1]
@@ -1812,7 +1822,7 @@ def tbjs_thumb_mr_place(shape):
 
 
 def tbjs_thumb_br_place(shape):
-    debugprint('thumb_br_place()')
+    logging.debug("thumb_br_place()")
 
     shape = rotate(shape, [0, 0, 180])
     shape = rotate(shape, tbjs_key_rotation_offsets[2])
@@ -1825,7 +1835,7 @@ def tbjs_thumb_br_place(shape):
 
 
 def tbjs_thumb_bl_place(shape):
-    debugprint('thumb_bl_place()')
+    logging.debug("thumb_bl_place()")
     shape = rotate(shape, [0, 0, 180])
     shape = rotate(shape, tbjs_key_rotation_offsets[3])
     t_off = tbjs_key_translation_offsets[3]
@@ -1884,35 +1894,35 @@ def tbjs_thumb(side="right"):
 
 
 def tbjs_thumb_post_tr():
-    debugprint('thumb_post_tr()')
+    logging.debug("thumb_post_tr()")
     return translate(web_post(),
                      [(mount_width / 2) + adjustable_plate_size(tbjs_Uwidth) - post_adj, ((mount_height/2) + adjustable_plate_size(tbjs_Uheight)) - post_adj, 0]
                      )
 
 
 def tbjs_thumb_post_tl():
-    debugprint('thumb_post_tl()')
+    logging.debug("thumb_post_tl()")
     return translate(web_post(),
                      [-(mount_width / 2) - adjustable_plate_size(tbjs_Uwidth) + post_adj, ((mount_height/2) + adjustable_plate_size(tbjs_Uheight)) - post_adj, 0]
                      )
 
 
 def tbjs_thumb_post_bl():
-    debugprint('thumb_post_bl()')
+    logging.debug("thumb_post_bl()")
     return translate(web_post(),
                      [-(mount_width / 2) - adjustable_plate_size(tbjs_Uwidth) + post_adj, -((mount_height/2) + adjustable_plate_size(tbjs_Uheight)) + post_adj, 0]
                      )
 
 
 def tbjs_thumb_post_br():
-    debugprint('thumb_post_br()')
+    logging.debug("thumb_post_br()")
     return translate(web_post(),
                      [(mount_width / 2) + adjustable_plate_size(tbjs_Uwidth) - post_adj, - ((mount_height/2) + adjustable_plate_size(tbjs_Uheight)) + post_adj, 0]
                      )
 
 
 def tbjs_post_r():
-    debugprint('tbjs_post_r()')
+    logging.debug("tbjs_post_r()")
     radius = ball_diameter/2 + ball_wall_thickness + ball_gap
     return translate(web_post(),
                      [1.0*(radius - post_adj), 0.0*(radius - post_adj), 0]
@@ -1920,7 +1930,7 @@ def tbjs_post_r():
 
 
 def tbjs_post_tr():
-    debugprint('tbjs_post_tr()')
+    logging.debug("tbjs_post_tr()")
     radius = ball_diameter/2+ball_wall_thickness + ball_gap
     return translate(web_post(),
                      [0.5*(radius - post_adj), 0.866*(radius - post_adj), 0]
@@ -1928,7 +1938,7 @@ def tbjs_post_tr():
 
 
 def tbjs_post_tl():
-    debugprint('tbjs_post_tl()')
+    logging.debug("tbjs_post_tl()")
     radius = ball_diameter/2+ball_wall_thickness + ball_gap
     return translate(web_post(),
                      [-0.5*(radius - post_adj), 0.866*(radius - post_adj), 0]
@@ -1936,7 +1946,7 @@ def tbjs_post_tl():
 
 
 def tbjs_post_l():
-    debugprint('tbjs_post_l()')
+    logging.debug("tbjs_post_l()")
     radius = ball_diameter/2+ball_wall_thickness + ball_gap
     return translate(web_post(),
                      [-1.0*(radius - post_adj), 0.0*(radius - post_adj), 0]
@@ -1944,7 +1954,7 @@ def tbjs_post_l():
 
 
 def tbjs_post_bl():
-    debugprint('tbjs_post_bl()')
+    logging.debug("tbjs_post_bl()")
     radius = ball_diameter/2+ball_wall_thickness + ball_gap
     return translate(web_post(),
                      [-0.5*(radius - post_adj), -0.866*(radius - post_adj), 0]
@@ -1952,7 +1962,7 @@ def tbjs_post_bl():
 
 
 def tbjs_post_br():
-    debugprint('tbjs_post_br()')
+    logging.debug("tbjs_post_br()")
     radius = ball_diameter/2+ball_wall_thickness + ball_gap
     return translate(web_post(),
                      [0.5*(radius - post_adj), -0.866*(radius - post_adj), 0]
@@ -1960,7 +1970,7 @@ def tbjs_post_br():
 
 
 def tbjs_thumb_connectors():
-    print('thumb_connectors()')
+    logging.debug('thumb_connectors()')
     hulls = []
 
     # bottom 2 to tb
@@ -2302,7 +2312,7 @@ def tbcj_thumb_connectors():
 ##########
 
 def left_key_position(row, direction, low_corner=False, side='right'):
-    debugprint("left_key_position()")
+    logging.debug("left_key_position()")
     pos = np.array(
         key_position([-mount_width * 0.5, direction * mount_height * 0.5, 0], 0, row)
     )
@@ -2336,23 +2346,23 @@ def left_key_position(row, direction, low_corner=False, side='right'):
 
 
 def left_key_place(shape, row, direction, low_corner=False, side='right'):
-    debugprint("left_key_place()")
+    logging.debug("left_key_place()")
     pos = left_key_position(row, direction, low_corner=low_corner, side=side)
     return translate(shape, pos)
 
 
 def wall_locate1(dx, dy):
-    debugprint("wall_locate1()")
+    logging.debug("wall_locate1()")
     return [dx * wall_thickness, dy * wall_thickness, -1]
 
 
 def wall_locate2(dx, dy):
-    debugprint("wall_locate2()")
+    logging.debug("wall_locate2()")
     return [dx * wall_x_offset, dy * wall_y_offset, -wall_z_offset]
 
 
 def wall_locate3(dx, dy, back=False):
-    debugprint("wall_locate3()")
+    logging.debug("wall_locate3()")
     if back:
         return [
             dx * (wall_x_offset + wall_base_x_thickness),
@@ -2368,7 +2378,7 @@ def wall_locate3(dx, dy, back=False):
 
 
 def wall_brace(place1, dx1, dy1, post1, place2, dx2, dy2, post2, back=False, skeleton=False, skel_bottom=False):
-    debugprint("wall_brace()")
+    logging.debug("wall_brace()")
     hulls = []
 
     hulls.append(place1(post1))
@@ -2407,7 +2417,7 @@ def wall_brace(place1, dx1, dy1, post1, place2, dx2, dy2, post2, back=False, ske
 
 
 def key_wall_brace(x1, y1, dx1, dy1, post1, x2, y2, dx2, dy2, post2, back=False, skeleton=False, skel_bottom=False):
-    debugprint("key_wall_brace()")
+    logging.debug("key_wall_brace()")
     return wall_brace(
         (lambda shape: key_place(shape, x1, y1)),
         dx1,
@@ -2424,7 +2434,7 @@ def key_wall_brace(x1, y1, dx1, dy1, post1, x2, y2, dx2, dy2, post2, back=False,
 
 
 def back_wall(skeleton=False):
-    print("back_wall()")
+    logging.debug("back_wall()")
     x = 0
     shape = None
     shape = union([shape, key_wall_brace(
@@ -2456,7 +2466,7 @@ def back_wall(skeleton=False):
 
 
 def right_wall(skeleton=False):
-    print("right_wall()")
+    logging.debug("right_wall()")
     y = 0
 
     shape = None
@@ -2493,7 +2503,7 @@ def right_wall(skeleton=False):
 
 
 def left_wall(side='right', skeleton=False):
-    print('left_wall()')
+    logging.debug("left_wall()")
     shape = union([wall_brace(
         (lambda sh: key_place(sh, 0, 0)), 0, 1, web_post_tl(),
         (lambda sh: left_key_place(sh, 0, 1, side=side)), 0, 1, web_post(),
@@ -2549,7 +2559,7 @@ def left_wall(side='right', skeleton=False):
 
 
 def front_wall(skeleton=False):
-    print('front_wall()')
+    logging.debug("front_wall()")
     shape = None
 
     # shape = union([shape,key_wall_brace(
@@ -2582,9 +2592,9 @@ def front_wall(skeleton=False):
 
     for i in range(ncols - 3):
         x = i + 3
-        print("col {}".format(x))
+        logging.debug("col {}", x)
         if x < (offset_col - 1):
-            print("pre-offset")
+            logging.debug("pre-offset")
             if x > 3:
                 shape = union([shape, key_wall_brace(
                     x-1, lastrow, 0, -1, web_post_br(), x, lastrow, 0, -1, web_post_bl()
@@ -2593,7 +2603,7 @@ def front_wall(skeleton=False):
                 x, lastrow, 0, -1, web_post_bl(), x, lastrow, 0, -1, web_post_br()
             )])
         elif x < (offset_col):
-            print("offset setup")
+            logging.debug("offset setup")
             if x > 3:
                 shape = union([shape, key_wall_brace(
                     x-1, lastrow, 0, -1, web_post_br(), x, lastrow, 0, -1, web_post_bl()
@@ -2603,7 +2613,7 @@ def front_wall(skeleton=False):
             )])
 
         elif x == (offset_col):
-            print("offset")
+            logging.debug("offset")
             shape = union([shape, key_wall_brace(
                 x - 1, lastrow, 0.5, -1, web_post_br(), x, cornerrow, .5, -1, web_post_bl()
             )])
@@ -2612,7 +2622,7 @@ def front_wall(skeleton=False):
             )])
 
         elif x == (offset_col + 1):
-            print("offset completion")
+            logging.debug("offset completion")
             shape = union([shape, key_wall_brace(
                 x, cornerrow, 0, -1, web_post_bl(), x - 1, cornerrow, 0, -1, web_post_br()
             )])
@@ -2621,7 +2631,7 @@ def front_wall(skeleton=False):
             )])
 
         else:
-            print("post offset")
+            logging.debug("post offset")
             shape = union([shape, key_wall_brace(
                 x, cornerrow, 0, -1, web_post_bl(), x - 1, corner, 0, -1, web_post_br()
             )])
@@ -2684,7 +2694,7 @@ def thumb_connection(side='right', style_override=None, skeleton=False):
 
 
 def default_thumb_walls(skeleton=False):
-    print('thumb_walls()')
+    logging.debug("thumb_walls()")
     # thumb, walls
     if default_1U_cluster:
         shape = union([wall_brace(default_thumb_mr_place, 0, -1, web_post_br(), default_thumb_tr_place, 0, -1, web_post_br())])
@@ -2712,7 +2722,7 @@ def default_thumb_walls(skeleton=False):
 
 
 def default_thumb_connection(side='right', skeleton=False):
-    print('thumb_connection()')
+    logging.debug("thumb_connection()")
     # clunky bit on the top left thumb connection  (normal connectors don't work well)
     shape = None
     shape = union([shape, bottom_hull(
@@ -2768,7 +2778,7 @@ def default_thumb_connection(side='right', skeleton=False):
 
 
 def tbjs_thumb_connection(side='right', skeleton=False):
-    print('thumb_connection()')
+    logging.debug("thumb_connection()")
     # clunky bit on the top left thumb connection  (normal connectors don't work well)
     hulls = []
     hulls.append(
@@ -2811,7 +2821,7 @@ def tbjs_thumb_connection(side='right', skeleton=False):
 
 
 def tbjs_thumb_walls(skeleton=False):
-    print('thumb_walls()')
+    logging.debug("thumb_walls()")
     # thumb, walls
     shape = wall_brace(
         tbjs_thumb_mr_place, .5, 1, tbjs_thumb_post_tr(),
@@ -3163,7 +3173,7 @@ def carbonfet_thumb_connection(side='right', skeleton=False):
 
 
 def case_walls(side='right', skeleton=False):
-    print('case_walls()')
+    logging.debug("case_walls()")
     return (
         union([
             back_wall(skeleton=skeleton),
@@ -3191,19 +3201,19 @@ rj9_position = (rj9_start[0], rj9_start[1], 11)
 
 
 def rj9_cube():
-    debugprint('rj9_cube()')
+    logging.debug("rj9_cube()")
     shape = box(14.78, 13, 22.38)
 
     return shape
 
 
 def rj9_space():
-    debugprint('rj9_space()')
+    logging.debug("rj9_space()")
     return translate(rj9_cube(), rj9_position)
 
 
 def rj9_holder():
-    print('rj9_holder()')
+    logging.debug("rj9_holder()")
     shape = union([translate(box(10.78, 9, 18.38), (0, 2, 0)), translate(box(10.78, 13, 5), (0, 0, 5))])
     shape = difference(rj9_cube(), [shape])
     shape = translate(shape, rj9_position)
@@ -3219,7 +3229,7 @@ usb_holder_thickness = 4
 
 
 def usb_holder():
-    print('usb_holder()')
+    logging.debug("usb_holder()")
     shape = box(
         usb_holder_size[0] + usb_holder_thickness,
         usb_holder_size[1],
@@ -3236,7 +3246,7 @@ def usb_holder():
 
 
 def usb_holder_hole():
-    debugprint('usb_holder_hole()')
+    logging.debug("usb_holder_hole()")
     shape = box(*usb_holder_size)
     shape = translate(shape,
                       (
@@ -3262,7 +3272,7 @@ external_start = list(
 
 
 def external_mount_hole():
-    print('external_mount_hole()')
+    logging.debug("external_mount_hole()")
     shape = box(external_holder_width, 20.0, external_holder_height+.1)
     undercut = box(external_holder_width+8, 10.0, external_holder_height+8+.1)
     shape = union([shape, translate(undercut, (0, -5, 0))])
@@ -3288,7 +3298,7 @@ pcb_mount_ref_position[2] = 0.0 + pcb_mount_ref_offset[2]
 
 
 def pcb_usb_hole():
-    debugprint('pcb_holder()')
+    logging.debug("pcb_holder()")
     pcb_usb_position = copy.deepcopy(pcb_mount_ref_position)
     pcb_usb_position[0] = pcb_usb_position[0] + pcb_usb_hole_offset[0]
     pcb_usb_position[1] = pcb_usb_position[1] + pcb_usb_hole_offset[1]
@@ -3313,7 +3323,7 @@ pcb_holder_thickness = pcb_holder_size[2]
 
 
 def pcb_holder():
-    debugprint('pcb_holder()')
+    logging.debug("pcb_holder()")
     shape = box(*pcb_holder_size)
     shape = translate(shape,
                       (
@@ -3326,7 +3336,7 @@ def pcb_holder():
 
 
 def wall_thinner():
-    debugprint('wall_thinner()')
+    logging.debug("wall_thinner()")
     shape = box(*wall_thinner_size)
     shape = translate(shape,
                       (
@@ -3339,7 +3349,7 @@ def wall_thinner():
 
 
 def trrs_hole():
-    debugprint('trrs_hole()')
+    logging.debug("trrs_hole()")
     trrs_position = copy.deepcopy(pcb_mount_ref_position)
     trrs_position[0] = trrs_position[0] + trrs_offset[0]
     trrs_position[1] = trrs_position[1] + trrs_offset[1]
@@ -3364,7 +3374,7 @@ pcb_screw_position[1] = pcb_screw_position[1] + pcb_screw_y_offset
 
 
 def pcb_screw_hole():
-    debugprint('pcb_screw_hole()')
+    logging.debug("pcb_screw_hole()")
     holes = []
     hole = cylinder(*pcb_screw_hole_size)
     hole = translate(hole, pcb_screw_position)
@@ -3779,7 +3789,7 @@ def oled_undercut_mount_frame(side='right'):
 
 
 def teensy_holder():
-    print('teensy_holder()')
+    logging.debug("teensy_holder()")
     teensy_top_xy = key_position(wall_locate3(-1, 0), 0, centerrow - 1)
     teensy_bot_xy = key_position(wall_locate3(-1, 0), 0, centerrow + 1)
     teensy_holder_length = teensy_top_xy[1] - teensy_bot_xy[1]
@@ -3824,7 +3834,7 @@ def teensy_holder():
 
 
 def screw_insert_shape(bottom_radius, top_radius, height):
-    debugprint('screw_insert_shape()')
+    logging.debug("screw_insert_shape()")
     if bottom_radius == top_radius:
         base = cylinder(radius=bottom_radius, height=height)
     else:
@@ -3838,28 +3848,28 @@ def screw_insert_shape(bottom_radius, top_radius, height):
 
 
 def screw_insert(column, row, bottom_radius, top_radius, height, side='right'):
-    debugprint('screw_insert()')
+    logging.debug("screw_insert()")
     shift_right = column == lastcol
     shift_left = column == 0
     shift_up = (not (shift_right or shift_left)) and (row == 0)
     shift_down = (not (shift_right or shift_left)) and (row >= lastrow)
 
     if screws_offset == 'INSIDE':
-        # debugprint('Shift Inside')
+        # logging.debug("Shift Inside")
         shift_left_adjust = wall_base_x_thickness
         shift_right_adjust = -wall_base_x_thickness/2
         shift_down_adjust = -wall_base_y_thickness/2
         shift_up_adjust = -wall_base_y_thickness/3
 
     elif screws_offset == 'OUTSIDE':
-        debugprint('Shift Outside')
+        logging.debug("Shift Outside")
         shift_left_adjust = 0
         shift_right_adjust = wall_base_x_thickness/2
         shift_down_adjust = wall_base_y_thickness*2/3
         shift_up_adjust = wall_base_y_thickness*2/3
 
     else:
-        # debugprint('Shift Origin')
+        # logging.debug("Shift Origin")
         shift_left_adjust = 0
         shift_right_adjust = 0
         shift_down_adjust = 0
@@ -3953,7 +3963,7 @@ def thumb_screw_insert(bottom_radius, top_radius, height, offset=None, side='rig
 
 
 def screw_insert_all_shapes(bottom_radius, top_radius, height, offset=0, side='right'):
-    print('screw_insert_all_shapes()')
+    logging.debug("screw_insert_all_shapes()")
     shape = (
         translate(screw_insert(0, 0, bottom_radius, top_radius, height, side=side), (0, 0, offset)),
         translate(screw_insert(0, cornerrow, bottom_radius, top_radius, height, side=side), (0, left_wall_lower_y_offset, offset)),
@@ -4002,7 +4012,7 @@ def screw_insert_screw_holes(side='right'):
 
 
 def wire_post(direction, offset):
-    debugprint('wire_post()')
+    logging.debug("wire_post()")
     s1 = box(
         wire_post_diameter, wire_post_diameter, wire_post_height
     )
@@ -4024,7 +4034,7 @@ def wire_post(direction, offset):
 
 
 def wire_posts():
-    debugprint('wire_posts()')
+    logging.debug("wire_posts()")
     shape = default_thumb_ml_place(wire_post(1, 0).translate([-5, 0, -2]))
     shape = union([shape, default_thumb_ml_place(wire_post(-1, 6).translate([0, 0, -2.5]))])
     shape = union([shape, default_thumb_ml_place(wire_post(1, 0).translate([5, 0, -2]))])
@@ -4041,7 +4051,7 @@ def wire_posts():
 
 
 def model_side(side="right"):
-    print('model_right()')
+    logging.debug("model_right()")
     #shape = add([key_holes(side=side)])
     shape = union([key_holes(side=side)])
     if debug_exports:
@@ -4143,7 +4153,7 @@ def model_side(side="right"):
 
     has_trackball = False
     if ('TRACKBALL' in thumb_style) and (side == ball_side or ball_side == 'both'):
-        print("Has Trackball")
+        logging.debug("Has Trackball")
         tbprecut, tb, tbcutout, sensor, ball = generate_trackball_in_cluster()
         has_trackball = True
         thumb_section = difference(thumb_section, [tbprecut])
@@ -4265,7 +4275,7 @@ def baseplate(wedge_angle=None, side='right'):
             if sizes[-1] > max_val:
                 inner_index = i_wire
                 max_val = sizes[-1]
-        debugprint(sizes)
+        logging.debug(sizes)
         inner_wire = base_wires[inner_index]
 
         # inner_plate = cq.Workplane('XY').add(cq.Face.makeFromWires(inner_wire))

@@ -473,7 +473,7 @@ class GenerateConfigAction(argparse.Action):
     Generate a file with default configuration settings.
     """
 
-    def __init__(self, option_strings, dest, **kwargs):
+    def __init__(self, option_strings, dest: str, **kwargs):
         kwargs.update({
             'nargs': "?",
             'const': pathlib.Path("default.json"),
