@@ -1,4 +1,5 @@
 import logging
+import pathlib
 import sys
 if sys.version_info[:2] > (3, 9):
     import importlib.resources as resources
@@ -145,10 +146,15 @@ def extrude_poly(outer_poly, inner_polys=None, height=1):
         return sl.linear_extrude(height=height, twist=0, convexity=0, center=True)(outer_poly)
 
 
-def import_file(parts_path: resources.abc.Traversable, fname: str, convexity=2):
+def import_resource(parts_path: resources.abc.Traversable, fname: str, convexity=2):
     logging.info("IMPORTING FROM %s", fname)
     with resources.as_file(parts_path.joinpath(fname + ".stl")) as extracted:
-        return sl.import_stl(extracted, convexity=convexity)
+        return sl.import_stl(str(extracted), convexity=convexity)
+
+
+def import_file(fname: pathlib.Path, convexity=2):
+    logging.info("IMPORTING FROM %s", fname)
+    return sl.import_stl(str(fname), convexity=convexity)
 
 
 def export_file(shape, fname):

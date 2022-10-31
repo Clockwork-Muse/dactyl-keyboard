@@ -251,7 +251,11 @@ def single_plate(cylinder_segments=100, side="right"):
         plate = difference(plate, [undercut])
 
     if plate_file is not None:
-        socket = import_file(parts_path, plate_file)
+        plate_path = pathlib.Path(plate_file)
+        if plate_path.exists():
+            socket = import_file(plate_path)
+        else:
+            socket = import_resource(parts_path, plate_file)
         socket = translate(socket, [0, 0, plate_thickness + plate_offset])
         plate = union([plate, socket])
 

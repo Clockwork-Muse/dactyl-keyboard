@@ -1,4 +1,5 @@
 import logging
+import pathlib
 import sys
 if sys.version_info[:2] > (3, 9):
     import importlib.resources as resources
@@ -215,10 +216,15 @@ def extrude_poly(outer_poly, inner_polys=None, height=1):  # vector=(0,0,1)):
         cq.Solid.extrudeLinear(outerWire=outer_wires, innerWires=inner_wires, vecNormal=cq.Vector(0, 0, height)))
 
 
-def import_file(parts_path: resources.abc.Traversable, fname: str, convexity=None):
+def import_resource(parts_path: resources.abc.Traversable, fname: str, convexity=None):
     logging.info("IMPORTING FROM %s", fname)
     with resources.as_file(parts_path.joinpath(fname + ".step")) as extracted:
-        return cq.Workplane('XY').add(cq.importers.importShape(cq.exporters.ExportTypes.STEP, extracted))
+        return cq.Workplane('XY').add(cq.importers.importShape(cq.exporters.ExportTypes.STEP, str(extracted)))
+
+
+def import_file(fname: pathlib.Path, convexity=None):
+    logging.info("IMPORTING FROM %s", fname)
+    return cq.Workplane('XY').add(cq.importers.importShape(cq.exporters.ExportTypes.STEP, str(fname)))
 
 
 def export_file(shape, fname):
