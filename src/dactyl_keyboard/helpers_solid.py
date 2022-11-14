@@ -130,22 +130,6 @@ def bottom_hull(p, height=0.001):
     return shape
 
 
-def polyline(point_list):
-    return sl.polygon(point_list)
-
-
-# def project_to_plate():
-#     square = cq.Workplane('XY').rect(1000, 1000)
-#     for wire in square.wires().objects:
-#         plane = cq.Workplane('XY').add(cq.Face.makeFromWires(wire))
-
-def extrude_poly(outer_poly, inner_polys=None, height=1):
-    if inner_polys is not None:
-        return sl.linear_extrude(height=height, twist=0, convexity=0, center=True)(outer_poly, *inner_polys)
-    else:
-        return sl.linear_extrude(height=height, twist=0, convexity=0, center=True)(outer_poly)
-
-
 def import_resource(parts_path: resources.abc.Traversable, fname: str, convexity=2):
     logging.info("IMPORTING FROM %s", fname)
     with resources.as_file(parts_path.joinpath(fname + ".stl")) as extracted:

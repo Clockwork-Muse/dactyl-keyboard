@@ -195,27 +195,6 @@ def bottom_hull(p, height=0.001):
     return shape
 
 
-def polyline(point_list):
-    return cq.Workplane('XY').polyline(point_list)
-
-
-# def project_to_plate():
-#     square = cq.Workplane('XY').rect(1000, 1000)
-#     for wire in square.wires().objects:
-#         plane = cq.Workplane('XY').add(cq.Face.makeFromWires(wire))
-
-
-def extrude_poly(outer_poly, inner_polys=None, height=1):  # vector=(0,0,1)):
-    outer_wires = cq.Wire.assembleEdges(outer_poly.edges().objects)
-    inner_wires = []
-    if inner_polys is not None:
-        for item in inner_polys:
-            inner_wires.append(cq.Wire.assembleEdges(item.edges().objects))
-
-    return cq.Workplane('XY').add(
-        cq.Solid.extrudeLinear(outerWire=outer_wires, innerWires=inner_wires, vecNormal=cq.Vector(0, 0, height)))
-
-
 def import_resource(parts_path: resources.abc.Traversable, fname: str, convexity=None):
     logging.info("IMPORTING FROM %s", fname)
     with resources.as_file(parts_path.joinpath(fname + ".step")) as extracted:
