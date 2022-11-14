@@ -1,0 +1,16 @@
+FROM mcr.microsoft.com/devcontainers/python:3.8
+
+# Avoid warnings by switching to noninteractive
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN \
+    #
+    # Update and install packages
+    apt-get update --yes --fix-missing \
+    && apt-get install --yes --quiet --no-install-recommends \
+        libgl1-mesa-glx \
+    #
+    # Clean up
+    && apt-get autoremove -y \
+    && apt-get clean -y \
+    && rm -rf /var/lib/apt/lists/*
