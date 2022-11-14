@@ -120,13 +120,13 @@ I plan to continue to use this code to try new geometries and features to share 
 
 This project is now a python package, and installs as one:
 ```
-pip install "dactyl-keyboard @ git+https://github.com/joshreve/dactyl-keyboard"
+pip install "dactyl-keyboard @ git+https://github.com/Clockwork-Muse/dactyl-keyboard"
 ```
 (see the official [pip support for version control systems](https://pip.pypa.io/en/stable/topics/vcs-support/) for more options)
 
 The engines required to create output files are optional dependencies:
- - cadquery: `"pip install "dactyl-keyboard[cadquery] @ git+https://github.com/joshreve/dactyl-keyboard"`
- - solid/openSCAD: `"pip install "dactyl-keyboard[solid] @ git+https://github.com/joshreve/dactyl-keyboard"`
+ - cadquery: `"pip install "dactyl-keyboard[cadquery] @ git+https://github.com/Clockwork-Muse/dactyl-keyboard"`
+ - solid/openSCAD: `"pip install "dactyl-keyboard[solid] @ git+https://github.com/Clockwork-Muse/dactyl-keyboard"`
 
  Specifying multiple options requires separating them with a comma: `pip install "dactyl-keyboard[cadquery, solid] @ ..."`
 
@@ -141,7 +141,7 @@ channels:
 dependencies:
   - python>=3.8
   - pip:
-    - "dactyl-keyboard @ git+https://github.com/joshreve/dactyl-keyboard"
+    - "dactyl-keyboard @ git+https://github.com/Clockwork-Muse/dactyl-keyboard"
 ```
 
 ## Generating the design
