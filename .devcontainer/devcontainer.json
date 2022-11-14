@@ -1,0 +1,78 @@
+// For format details, see https://aka.ms/vscode-remote/devcontainer.json
+{
+    "name": "Dactyl generator dev environment",
+    "dockerFile": "Containerfile",
+    "runArgs": [
+        "--name", "dactyl_keyboard_generator_dev",
+        // Required for running as a non-root user in rootless podman
+        "--userns", "keep-id",
+    ],
+
+    "workspaceFolder": "/workspaces/dactyl_keyboard",
+    "workspaceMount": "source=${localWorkspaceFolder},target=${containerWorkspaceFolder},type=bind,consistency=cached",
+
+    "features": {},
+
+    "containerEnv": {
+        // Required for running as a non-root user in rootless Podman.  Remove if on Docker
+        "HOME": "/home/vscode",
+        "WORKSPACE": "${containerWorkspaceFolder}",
+    },
+
+    "postCreateCommand": [ "/bin/bash", ".devcontainer/environment_setup.sh" ],
+
+    // Add a non-root user.
+    "remoteUser": "vscode",
+    "updateRemoteUserUID": true,
+
+    // Configure tool-specific properties.
+    "customizations": {
+        // Configure properties specific to VS Code.
+        "vscode": {
+            // Set *default* container specific settings.json values on container create.
+            "settings": {
+                "editor.rulers": [ 80, 120, 160 ],
+                "editor.trimAutoWhitespace": true,
+
+                "files.exclude": {
+                    ".venv": true,
+                    "__pycache__": true,
+                    "*.egg-info": true,
+                },
+                "files.watcherExclude": {
+                    ".venv": true,
+                    "__pycache__": true,
+                    "*.egg-info": true,
+                },
+                "files.insertFinalNewline": true,
+                "files.trimFinalNewlines": true,
+                "files.trimTrailingWhitespace": true,
+
+                "python.analysis.memory.keepLibraryAst": true,
+                "python.defaultInterpreterPath": "${containerWorkspaceFolder}/.venv/bin/python",
+                "python.formatting.autopep8Args": [
+                    "--max-line-length=160"
+                ],
+                "python.linting.enabled": false,
+                "python.linting.pylintEnabled": false,
+                "pylint.args": [
+                    "--rcfile=${containerWorkspaceFolder}/.devcontainer/.pylintrc",
+                    "--jobs=0"
+                ],
+
+                "terminal.integrated.defaultProfile.linux": "bash",
+                "terminal.integrated.profiles.linux": {
+                    "bash": {
+                        "path": "/bin/bash"
+                    }
+                }
+            },
+
+            "extensions": [
+                "ms-python.python",
+                "ms-python.pylint",
+                "ms-python.vscode-pylance",
+            ],
+        }
+    }
+}
