@@ -11,6 +11,7 @@ authors = [
     { name="Matt Adereth" },
     { name="Tom Short" },
     { name="Josh Reve" },
+    { name="Stephen A. Imhoff" },
 ]
 description = "A package to generate Dactyl(Manuform) keyboards"
 readme = "README.md"
@@ -32,8 +33,8 @@ cadquery = ["cadquery==2.2.0b2", "cadquery-ocp==7.6.3a0", "scipy"]
 solid = ["solidpython"]
 
 [project.urls]
-"Homepage" = "https://github.com/joshreve/dactyl-keyboard"
-"Bug Tracker" = "https://github.com/joshreve/dactyl-keyboard/issues"
+"Homepage" = "https://github.com/Clockwork-Muse/dactyl-keyboard"
+"Bug Tracker" = "https://github.com/Clockwork-Muse/dactyl-keyboard/issues"
 
 [project.scripts]
 "dactyl-keyboard" = "dactyl_keyboard.dactyl_manuform:run"
