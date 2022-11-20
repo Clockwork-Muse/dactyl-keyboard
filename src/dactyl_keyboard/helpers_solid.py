@@ -102,15 +102,6 @@ def hull_from_shapes(shapes, points=None):
     return sl.hull()(*hs)
 
 
-def triangle_hulls(shapes):
-    logging.debug("triangle_hulls()")
-    hulls = []
-    for i in range(len(shapes) - 2):
-        hulls.append(hull_from_shapes(shapes[i: (i + 3)]))
-
-    return union(hulls)
-
-
 def bottom_hull(p, height=0.001):
     logging.debug("bottom_hull()")
     shape = None

@@ -1,4 +1,5 @@
 import argparse
+from collections.abc import Iterable
 import copy
 import json
 import logging
@@ -176,6 +177,14 @@ teensy_holder_height = 6 + teensy_width
 # save_path = path.join("..", "things", save_dir)
 if not path.isdir(save_path):
     os.mkdir(save_path)
+
+
+def triangle_hulls(shapes: Iterable) -> Any:
+    hulls = []
+    for i in range(len(shapes) - 2):
+        hulls.append(hull_from_shapes(shapes[i: (i + 3)]))
+
+    return union(hulls)
 
 
 def column_offset(column: int) -> list:
