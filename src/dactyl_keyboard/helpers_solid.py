@@ -1,137 +1,137 @@
-import logging
-import pathlib
-import sys
-if sys.version_info[:2] > (3, 9):
-    import importlib.resources as resources
-else:
-    import importlib_resources as resources
+# import logging
+# import pathlib
+# import sys
+# if sys.version_info[:2] > (3, 9):
+#     import importlib.resources as resources
+# else:
+#     import importlib_resources as resources
 
-import solid as sl
-
-
-def box(width, height, depth):
-    return sl.cube([width, height, depth], center=True)
+# import solid as sl
 
 
-def cylinder(radius, height, segments=100):
-    return sl.cylinder(r=radius, h=height, segments=segments, center=True)
+# def box(width, height, depth):
+#     return sl.cube([width, height, depth], center=True)
 
 
-def sphere(radius):
-    return sl.sphere(radius)
+# def cylinder(radius, height, segments=100):
+#     return sl.cylinder(r=radius, h=height, segments=segments, center=True)
 
 
-def cone(r1, r2, height):
-    return sl.cylinder(r1=r1, r2=r2, h=height)  # , center=True)
+# def sphere(radius):
+#     return sl.sphere(radius)
 
 
-def rotate(shape, angle):
-    if shape is None:
-        return None
-    return sl.rotate(angle)(shape)
+# def cone(r1, r2, height):
+#     return sl.cylinder(r1=r1, r2=r2, h=height)  # , center=True)
 
 
-def translate(shape, vector):
-    if shape is None:
-        return None
-    return sl.translate(tuple(vector))(shape)
+# def rotate(shape, angle):
+#     if shape is None:
+#         return None
+#     return sl.rotate(angle)(shape)
 
 
-def mirror(shape, plane=None):
-    logging.debug("mirror()")
-    planes = {
-        'XY': [0, 0, 1],
-        'YX': [0, 0, -1],
-        'XZ': [0, 1, 0],
-        'ZX': [0, -1, 0],
-        'YZ': [1, 0, 0],
-        'ZY': [-1, 0, 0],
-    }
-    return sl.mirror(planes[plane])(shape)
+# def translate(shape, vector):
+#     if shape is None:
+#         return None
+#     return sl.translate(tuple(vector))(shape)
 
 
-def union(shapes):
-    logging.debug("union()")
-    shape = None
-    for item in shapes:
-        if item is not None:
-            if shape is None:
-                shape = item
-            else:
-                shape += item
-    return shape
+# def mirror(shape, plane=None):
+#     logging.debug("mirror()")
+#     planes = {
+#         'XY': [0, 0, 1],
+#         'YX': [0, 0, -1],
+#         'XZ': [0, 1, 0],
+#         'ZX': [0, -1, 0],
+#         'YZ': [1, 0, 0],
+#         'ZY': [-1, 0, 0],
+#     }
+#     return sl.mirror(planes[plane])(shape)
 
 
-def add(shapes):
-    logging.debug("union()")
-    shape = None
-    for item in shapes:
-        if item is not None:
-            if shape is None:
-                shape = item
-            else:
-                shape += item
-    return shape
+# def union(shapes):
+#     logging.debug("union()")
+#     shape = None
+#     for item in shapes:
+#         if item is not None:
+#             if shape is None:
+#                 shape = item
+#             else:
+#                 shape += item
+#     return shape
 
 
-def difference(shape, shapes):
-    logging.debug("difference()")
-    for item in shapes:
-        if item is not None:
-            shape -= item
-    return shape
+# def add(shapes):
+#     logging.debug("union()")
+#     shape = None
+#     for item in shapes:
+#         if item is not None:
+#             if shape is None:
+#                 shape = item
+#             else:
+#                 shape += item
+#     return shape
 
 
-def intersect(shape1, shape2):
-    if shape2 is not None:
-        return sl.intersection()(shape1, shape2)
-    else:
-        return shape1
+# def difference(shape, shapes):
+#     logging.debug("difference()")
+#     for item in shapes:
+#         if item is not None:
+#             shape -= item
+#     return shape
 
 
-def hull_from_points(points):
-    return sl.hull()(*points)
+# def intersect(shape1, shape2):
+#     if shape2 is not None:
+#         return sl.intersection()(shape1, shape2)
+#     else:
+#         return shape1
 
 
-def hull_from_shapes(shapes, points=None):
-    hs = []
-    if points is not None:
-        hs.extend(points)
-    if shapes is not None:
-        hs.extend(shapes)
-    return sl.hull()(*hs)
+# def hull_from_points(points):
+#     return sl.hull()(*points)
 
 
-def bottom_hull(p, height=0.001):
-    logging.debug("bottom_hull()")
-    shape = None
-    for item in p:
-        proj = sl.projection()(p)
-        t_shape = sl.linear_extrude(height=height, twist=0, convexity=0, center=True)(
-            proj
-        )
-        t_shape = sl.translate([0, 0, height / 2 - 10])(t_shape)
-        if shape is None:
-            shape = t_shape
-        shape = sl.hull()(p, shape, t_shape)
-    return shape
+# def hull_from_shapes(shapes, points=None):
+#     hs = []
+#     if points is not None:
+#         hs.extend(points)
+#     if shapes is not None:
+#         hs.extend(shapes)
+#     return sl.hull()(*hs)
 
 
-def import_resource(parts_path: resources.abc.Traversable, fname: str, convexity=2):
-    logging.info("IMPORTING FROM %s", fname)
-    with resources.as_file(parts_path.joinpath(fname + ".stl")) as extracted:
-        return sl.import_stl(str(extracted), convexity=convexity)
+# def bottom_hull(p, height=0.001):
+#     logging.debug("bottom_hull()")
+#     shape = None
+#     for item in p:
+#         proj = sl.projection()(p)
+#         t_shape = sl.linear_extrude(height=height, twist=0, convexity=0, center=True)(
+#             proj
+#         )
+#         t_shape = sl.translate([0, 0, height / 2 - 10])(t_shape)
+#         if shape is None:
+#             shape = t_shape
+#         shape = sl.hull()(p, shape, t_shape)
+#     return shape
 
 
-def import_file(fname: pathlib.Path, convexity=2):
-    logging.info("IMPORTING FROM %s", fname)
-    return sl.import_stl(str(fname), convexity=convexity)
+# def import_resource(parts_path: resources.abc.Traversable, fname: str, convexity=2):
+#     logging.info("IMPORTING FROM %s", fname)
+#     with resources.as_file(parts_path.joinpath(fname + ".stl")) as extracted:
+#         return sl.import_stl(str(extracted), convexity=convexity)
 
 
-def export_file(shape, fname):
-    logging.info("EXPORTING TO %s", fname)
-    sl.scad_render_to_file(shape, fname + ".scad")
+# def import_file(fname: pathlib.Path, convexity=2):
+#     logging.info("IMPORTING FROM %s", fname)
+#     return sl.import_stl(str(fname), convexity=convexity)
 
 
-def export_dxf(shape, fname):
-    logging.warn("NO DXF EXPORT FOR SOLID %s", fname)
+# def export_file(shape, fname):
+#     logging.info("EXPORTING TO %s", fname)
+#     sl.scad_render_to_file(shape, fname + ".scad")
+
+
+# def export_dxf(shape, fname):
+#     logging.warn("NO DXF EXPORT FOR SOLID %s", fname)

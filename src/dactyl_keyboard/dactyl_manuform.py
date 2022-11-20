@@ -8,7 +8,7 @@ import os
 import os.path as path
 import pathlib
 import sys
-from typing import Optional
+from typing import Any, Optional
 
 if sys.version_info[:2] > (3, 9):
     import importlib.resources as resources
@@ -17,6 +17,7 @@ else:
 
 import numpy as np
 
+from . engines.engine import GeometryEngine
 from . generate_configuration import GenerateConfigAction, shape_config
 
 
@@ -86,8 +87,10 @@ parts_path = resources.files("dactyl_keyboard.parts")
 # HELPER FUNCTIONS TO MERGE CADQUERY AND OPENSCAD
 ####################################################
 
+geometry_engine: Optional[GeometryEngine] = None
 if ENGINE == 'cadquery':
-    from . helpers_cadquery import *
+    from . engines.cadquery_engine import CadQueryEngine
+    geometry_engine = CadQueryEngine()
 else:
     from . helpers_solid import *
 
@@ -182,9 +185,9 @@ if not path.isdir(save_path):
 def triangle_hulls(shapes: Iterable) -> Any:
     hulls = []
     for i in range(len(shapes) - 2):
-        hulls.append(hull_from_shapes(shapes[i: (i + 3)]))
+        hulls.append(geometry_engine.convex_hull(shapes[i: (i + 3)]))
 
-    return union(hulls)
+    return geometry_engine.union(hulls)
 
 
 def column_offset(column: int) -> list:
@@ -197,76 +200,83 @@ def single_plate(cylinder_segments=100, side="right"):
 
     if plate_style in ['NUB', 'HS_NUB']:
         tb_border = (mount_height-keyswitch_height)/2
-        top_wall = box(mount_width, tb_border, plate_thickness)
-        top_wall = translate(top_wall, (0, (tb_border / 2) + (keyswitch_height / 2), plate_thickness / 2))
+        top_wall = geometry_engine.box(mount_width, tb_border, plate_thickness)
+        top_wall = geometry_engine.translate(top_wall, (0, (tb_border / 2) + (keyswitch_height / 2), plate_thickness / 2))
 
         lr_border = (mount_width - keyswitch_width) / 2
-        left_wall = box(lr_border, mount_height, plate_thickness)
-        left_wall = translate(left_wall, ((lr_border / 2) + (keyswitch_width / 2), 0, plate_thickness / 2))
+        left_wall = geometry_engine.box(lr_border, mount_height, plate_thickness)
+        left_wall = geometry_engine.translate(left_wall, ((lr_border / 2) + (keyswitch_width / 2), 0, plate_thickness / 2))
 
-        side_nub = cylinder(radius=1, height=2.75)
-        side_nub = rotate(side_nub, (90, 0, 0))
-        side_nub = translate(side_nub, (keyswitch_width / 2, 0, 1))
+        side_nub = geometry_engine.cylinder(radius=1, height=2.75)
+        side_nub = geometry_engine.rotate(side_nub, (90, 0, 0))
+        side_nub = geometry_engine.translate(side_nub, (keyswitch_width / 2, 0, 1))
 
-        nub_cube = box(1.5, 2.75, plate_thickness)
-        nub_cube = translate(nub_cube, ((1.5 / 2) + (keyswitch_width / 2),  0, plate_thickness / 2))
+        nub_cube = geometry_engine.box(1.5, 2.75, plate_thickness)
+        nub_cube = geometry_engine.translate(nub_cube, ((1.5 / 2) + (keyswitch_width / 2),  0, plate_thickness / 2))
 
-        side_nub2 = hull_from_shapes((side_nub, nub_cube))
-        side_nub2 = union([side_nub2, side_nub, nub_cube])
+        side_nub2 = geometry_engine.convex_hull((side_nub, nub_cube))
+        side_nub2 = geometry_engine.union([side_nub2, side_nub, nub_cube])
 
-        plate_half1 = union([top_wall, left_wall, side_nub2])
+        plate_half1 = geometry_engine.union([top_wall, left_wall, side_nub2])
         plate_half2 = plate_half1
-        plate_half2 = mirror(plate_half2, 'XZ')
-        plate_half2 = mirror(plate_half2, 'YZ')
+        plate_half2 = geometry_engine.mirror(plate_half2, 'XZ')
+        plate_half2 = geometry_engine.mirror(plate_half2, 'YZ')
 
-        plate = union([plate_half1, plate_half2])
+        plate = geometry_engine.union([plate_half1, plate_half2])
 
     else:  # 'HOLE' or default, square cutout for non-nub designs.
-        plate = box(mount_width, mount_height, mount_thickness)
-        plate = translate(plate, (0.0, 0.0, mount_thickness / 2.0))
+        plate = geometry_engine.box(mount_width, mount_height, mount_thickness)
+        plate = geometry_engine.translate(plate, (0.0, 0.0, mount_thickness / 2.0))
 
-        shape_cut = box(keyswitch_width, keyswitch_height, mount_thickness * 2 + .02)
-        shape_cut = translate(shape_cut, (0.0, 0.0, mount_thickness-.01))
+        shape_cut = geometry_engine.box(keyswitch_width, keyswitch_height, mount_thickness * 2 + .02)
+        shape_cut = geometry_engine.translate(shape_cut, (0.0, 0.0, mount_thickness-.01))
 
-        plate = difference(plate, [shape_cut])
+        plate = geometry_engine.difference(plate, [shape_cut])
 
     if plate_style in ['UNDERCUT', 'HS_UNDERCUT', 'NOTCH', 'HS_NOTCH']:
         if plate_style in ['UNDERCUT', 'HS_UNDERCUT']:
-            undercut = box(
+            undercut = geometry_engine.box(
                 keyswitch_width + 2 * clip_undercut,
                 keyswitch_height + 2 * clip_undercut,
                 mount_thickness
             )
 
         if plate_style in ['NOTCH', 'HS_NOTCH']:
-            undercut = box(
+            undercut = geometry_engine.box(
                 notch_width,
                 keyswitch_height + 2 * clip_undercut,
                 mount_thickness
             )
-            undercut = union([undercut,
-                              box(
-                                  keyswitch_width + 2 * clip_undercut,
-                                  notch_width,
-                                  mount_thickness
-                              )
-                              ])
+            undercut = geometry_engine.union([undercut,
+                                              geometry_engine.box(
+                                                  keyswitch_width + 2 * clip_undercut,
+                                                  notch_width,
+                                                  mount_thickness
+                                              )
+                                              ])
 
-        undercut = translate(undercut, (0.0, 0.0, -clip_thickness + mount_thickness / 2.0))
+        undercut = geometry_engine.translate(undercut, (0.0, 0.0, -clip_thickness + mount_thickness / 2.0))
 
         if ENGINE == 'cadquery' and undercut_transition > 0:
             undercut = undercut.faces("+Z").chamfer(undercut_transition, clip_undercut)
 
-        plate = difference(plate, [undercut])
+        plate = geometry_engine.difference(plate, [undercut])
 
     if plate_file is not None:
         plate_path = pathlib.Path(plate_file)
-        if plate_path.exists():
-            socket = import_file(plate_path)
+        plate_path_importer = next([importer for importer in geometry_engine.importers() if importer.file_type() == plate_path.suffix], None)
+        if plate_path.exists() and plate_path_importer is not None:
+            socket = plate_path_importer.import_resource(plate_path)
         else:
-            socket = import_resource(parts_path, plate_file)
-        socket = translate(socket, [0, 0, plate_thickness + plate_offset])
-        plate = union([plate, socket])
+            for importer in geometry_engine.importers():
+                importable_plate_file = parts_path.joinpath(plate_file + importer.file_type())
+                if importable_plate_file.is_file():
+                    with resources.as_file(importable_plate_file) as resource_plate:
+                        socket = importer.import_resource(resource_plate)
+                        break
+
+        socket = geometry_engine.translate(socket, [0, 0, plate_thickness + plate_offset])
+        plate = geometry_engine.union([plate, socket])
 
     if plate_holes:
         half_width = plate_holes_width/2.
@@ -274,38 +284,38 @@ def single_plate(cylinder_segments=100, side="right"):
         x_off = plate_holes_xy_offset[0]
         y_off = plate_holes_xy_offset[1]
         holes = [
-            translate(
-                cylinder(radius=plate_holes_diameter/2, height=plate_holes_depth+.01),
+            geometry_engine.translate(
+                geometry_engine.cylinder(radius=plate_holes_diameter/2, height=plate_holes_depth+.01),
                 (x_off+half_width, y_off+half_height, plate_holes_depth/2-.01)
             ),
-            translate(
-                cylinder(radius=plate_holes_diameter / 2, height=plate_holes_depth+.01),
+            geometry_engine.translate(
+                geometry_engine.cylinder(radius=plate_holes_diameter / 2, height=plate_holes_depth+.01),
                 (x_off-half_width, y_off+half_height, plate_holes_depth/2-.01)
             ),
-            translate(
-                cylinder(radius=plate_holes_diameter / 2, height=plate_holes_depth+.01),
+            geometry_engine.translate(
+                geometry_engine.cylinder(radius=plate_holes_diameter / 2, height=plate_holes_depth+.01),
                 (x_off-half_width, y_off-half_height, plate_holes_depth/2-.01)
             ),
-            translate(
-                cylinder(radius=plate_holes_diameter / 2, height=plate_holes_depth+.01),
+            geometry_engine.translate(
+                geometry_engine.cylinder(radius=plate_holes_diameter / 2, height=plate_holes_depth+.01),
                 (x_off+half_width, y_off-half_height, plate_holes_depth/2-.01)
             ),
         ]
-        plate = difference(plate, holes)
+        plate = geometry_engine.difference(plate, holes)
 
     if side == "left":
-        plate = mirror(plate, 'YZ')
+        plate = geometry_engine.mirror(plate, np.array((1, 0, 0)))
 
     return plate
 
 
 def plate_pcb_cutout(side="right"):
-    shape = box(*plate_pcb_size)
-    shape = translate(shape, (0, 0, -plate_pcb_size[2]/2))
-    shape = translate(shape, plate_pcb_offset)
+    shape = geometry_engine.box(*plate_pcb_size)
+    shape = geometry_engine.translate(shape, (0, 0, -plate_pcb_size[2]/2))
+    shape = geometry_engine.translate(shape, plate_pcb_offset)
 
     if side == "left":
-        shape = mirror(shape, 'YZ')
+        shape = geometry_engine.mirror(shape, np.array((1, 0, 0)))
 
     return shape
 
@@ -313,9 +323,9 @@ def plate_pcb_cutout(side="right"):
 def trackball_cutout(segments=100, side="right"):
     if trackball_modular:
         hole_diameter = ball_diameter + 2 * (ball_gap + ball_wall_thickness + trackball_modular_clearance+trackball_modular_lip_width)-.1
-        shape = cylinder(hole_diameter / 2, trackball_hole_height)
+        shape = geometry_engine.cylinder(hole_diameter / 2, trackball_hole_height)
     else:
-        shape = cylinder(trackball_hole_diameter / 2, trackball_hole_height)
+        shape = geometry_engine.cylinder(trackball_hole_diameter / 2, trackball_hole_height)
     return shape
 
 
@@ -325,11 +335,11 @@ def trackball_socket(segments=100, side="right"):
         ring_diameter = hole_diameter + 2 * trackball_modular_lip_width
         ring_height = trackball_modular_ring_height
         ring_z_offset = mount_thickness - trackball_modular_ball_height
-        shape = cylinder(ring_diameter / 2, ring_height)
-        shape = translate(shape, (0, 0, -ring_height / 2 + ring_z_offset))
+        shape = geometry_engine.cylinder(ring_diameter / 2, ring_height)
+        shape = geometry_engine.translate(shape, (0, 0, -ring_height / 2 + ring_z_offset))
 
-        cutter = cylinder(hole_diameter / 2, ring_height + .2)
-        cutter = translate(cutter, (0, 0, -ring_height / 2 + ring_z_offset))
+        cutter = geometry_engine.cylinder(hole_diameter / 2, ring_height + .2)
+        cutter = geometry_engine.translate(cutter, (0, 0, -ring_height / 2 + ring_z_offset))
 
         sensor = None
 
@@ -337,14 +347,14 @@ def trackball_socket(segments=100, side="right"):
         shape = import_file(parts_path, "trackball_socket_body_34mm")
         sensor = import_file(parts_path, "trackball_sensor_mount")
         cutter = import_file(parts_path, "trackball_socket_cutter_34mm")
-        cutter = union([cutter, import_file(parts_path, "trackball_sensor_cutter")])
+        cutter = geometry_engine.union([cutter, import_file(parts_path, "trackball_sensor_cutter")])
 
     # return shape, cutter
     return shape, cutter, sensor
 
 
 def trackball_ball(segments=100, side="right"):
-    shape = sphere(ball_diameter / 2)
+    shape = geometry_engine.sphere(ball_diameter / 2)
     return shape
 
 ################
@@ -386,18 +396,18 @@ def sa_cap(Usize=1):
         pl2 = 6
         pw2 = 11
 
-    k1 = box(bw2 * 2, bl2 * 2, 0.1)
-    k1 = translate(k1, (0, 0, 0.05))
-    k2 = box(pw2 * 2, pl2 * 2, 0.1)
-    k2 = translate(k2, (0, 0, 12.0))
+    k1 = geometry_engine.box(bw2 * 2, bl2 * 2, 0.1)
+    k1 = geometry_engine.translate(k1, (0, 0, 0.05))
+    k2 = geometry_engine.box(pw2 * 2, pl2 * 2, 0.1)
+    k2 = geometry_engine.translate(k2, (0, 0, 12.0))
     if m > 0:
-        m1 = box(m * 2, m * 2, 0.1)
-        m1 = translate(m1, (0, 0, 6.0))
-        key_cap = hull_from_shapes((k1, k2, m1))
+        m1 = geometry_engine.box(m * 2, m * 2, 0.1)
+        m1 = geometry_engine.translate(m1, (0, 0, 6.0))
+        key_cap = geometry_engine.convex_hull([k1, k2, m1])
     else:
-        key_cap = hull_from_shapes((k1, k2))
+        key_cap = geometry_engine.convex_hull([k1, k2])
 
-    key_cap = translate(key_cap, (0, 0, 5 + plate_thickness))
+    key_cap = geometry_engine.translate(key_cap, (0, 0, 5 + plate_thickness))
 
     if show_pcbs:
         key_cap = add([key_cap, key_pcb()])
@@ -418,14 +428,14 @@ def choc_cap(Usize=1):
         pt = 1.5
         gap = 1.5
 
-    k_box = box(bw2 * 2, bl2 * 2, 0.1)
-    k1 = translate(k_box, (0, 0, 0.05))
-    k2 = translate(k_box, (0, 0, 0.05+bt))
-    k3 = box(pw2 * 2, pl2 * 2, 0.1)
-    k3 = translate(k3, (0, 0, 0.05+bt+pt))
-    key_cap = hull_from_shapes((k1, k2, k3))
+    k_box = geometry_engine.box(bw2 * 2, bl2 * 2, 0.1)
+    k1 = geometry_engine.translate(k_box, (0, 0, 0.05))
+    k2 = geometry_engine.translate(k_box, (0, 0, 0.05+bt))
+    k3 = geometry_engine.box(pw2 * 2, pl2 * 2, 0.1)
+    k3 = geometry_engine.translate(k3, (0, 0, 0.05+bt+pt))
+    key_cap = geometry_engine.convex_hull((k1, k2, k3))
 
-    key_cap = translate(key_cap, (0, 0, 2.8 + plate_thickness))
+    key_cap = geometry_engine.translate(key_cap, (0, 0, 2.8 + plate_thickness))
 
     if show_pcbs:
         key_cap = add([key_cap, key_pcb()])
@@ -434,17 +444,17 @@ def choc_cap(Usize=1):
 
 
 def key_pcb():
-    shape = box(pcb_width, pcb_height, pcb_thickness)
-    shape = translate(shape, (0, 0, -pcb_thickness/2))
-    hole = cylinder(pcb_hole_diameter/2, pcb_thickness+.2)
-    hole = translate(hole, (0, 0, -(pcb_thickness+.1)/2))
+    shape = geometry_engine.box(pcb_width, pcb_height, pcb_thickness)
+    shape = geometry_engine.translate(shape, (0, 0, -pcb_thickness/2))
+    hole = geometry_engine.cylinder(pcb_hole_diameter/2, pcb_thickness+.2)
+    hole = geometry_engine.translate(hole, (0, 0, -(pcb_thickness+.1)/2))
     holes = [
-        translate(hole, (pcb_hole_pattern_width/2, pcb_hole_pattern_height/2, 0)),
-        translate(hole, (-pcb_hole_pattern_width / 2, pcb_hole_pattern_height / 2, 0)),
-        translate(hole, (-pcb_hole_pattern_width / 2, -pcb_hole_pattern_height / 2, 0)),
-        translate(hole, (pcb_hole_pattern_width / 2, -pcb_hole_pattern_height / 2, 0)),
+        geometry_engine.translate(hole, (pcb_hole_pattern_width/2, pcb_hole_pattern_height/2, 0)),
+        geometry_engine.translate(hole, (-pcb_hole_pattern_width / 2, pcb_hole_pattern_height / 2, 0)),
+        geometry_engine.translate(hole, (-pcb_hole_pattern_width / 2, -pcb_hole_pattern_height / 2, 0)),
+        geometry_engine.translate(hole, (pcb_hole_pattern_width / 2, -pcb_hole_pattern_height / 2, 0)),
     ]
-    shape = difference(shape, holes)
+    shape = geometry_engine.difference(shape, holes)
 
     return shape
 
@@ -525,30 +535,30 @@ def apply_key_geometry(
 
 
 def x_rot(shape, angle):
-    return rotate(shape, [math.degrees(angle), 0, 0])
+    return geometry_engine.rotate(shape, [math.degrees(angle), 0, 0])
 
 
 def y_rot(shape, angle):
-    return rotate(shape, [0, math.degrees(angle), 0])
+    return geometry_engine.rotate(shape, [0, math.degrees(angle), 0])
 
 
 def key_place(shape, column, row):
     logging.debug("key_place()")
-    return apply_key_geometry(shape, translate, x_rot, y_rot, column, row)
+    return apply_key_geometry(shape, geometry_engine.translate, x_rot, y_rot, column, row)
 
 
-def add_translate(shape, xyz):
-    logging.debug("add_translate()")
-    vals = []
-    for i in range(len(shape)):
-        vals.append(shape[i] + xyz[i])
-    return vals
+# def translate(shape, xyz):
+#     logging.debug("translate()")
+#     vals = []
+#     for i in range(len(shape)):
+#         vals.append(shape[i] + xyz[i])
+#     return vals
 
 
 def key_position(position, column, row):
     logging.debug("key_position()")
     return apply_key_geometry(
-        position, add_translate, rotate_around_x, rotate_around_y, column, row
+        position, geometry_engine.translate, rotate_around_x, rotate_around_y, column, row
     )
 
 
@@ -561,7 +571,7 @@ def key_holes(side="right"):
             if (reduced_inner_cols <= column < (ncols - reduced_outer_cols)) or (not row == lastrow):
                 holes.append(key_place(single_plate(side=side), column, row))
 
-    shape = union(holes)
+    shape = geometry_engine.union(holes)
 
     return shape
 
@@ -575,7 +585,7 @@ def plate_pcb_cutouts(side="right"):
             if (reduced_inner_cols <= column < (ncols - reduced_outer_cols)) or (not row == lastrow):
                 cutouts.append(key_place(plate_pcb_cutout(side=side), column, row))
 
-    # cutouts = union(cutouts)
+    # cutouts = geometry_engine.union(cutouts)
 
     return cutouts
 
@@ -601,8 +611,8 @@ def caps(cap_type="MX"):
 
 def web_post():
     logging.debug("web_post()")
-    post = box(post_size, post_size, web_thickness)
-    post = translate(post, (0, 0, plate_thickness - (web_thickness / 2)))
+    post = geometry_engine.box(post_size, post_size, web_thickness)
+    post = geometry_engine.translate(post, (0, 0, plate_thickness - (web_thickness / 2)))
     return post
 
 
@@ -612,7 +622,7 @@ def web_post_tr(wide=False):
     else:
         w_divide = 2.0
 
-    return translate(web_post(), ((mount_width / w_divide) - post_adj, (mount_height / 2) - post_adj, 0))
+    return geometry_engine.translate(web_post(), ((mount_width / w_divide) - post_adj, (mount_height / 2) - post_adj, 0))
 
 
 def web_post_tl(wide=False):
@@ -620,7 +630,7 @@ def web_post_tl(wide=False):
         w_divide = 1.2
     else:
         w_divide = 2.0
-    return translate(web_post(), (-(mount_width / w_divide) + post_adj, (mount_height / 2) - post_adj, 0))
+    return geometry_engine.translate(web_post(), (-(mount_width / w_divide) + post_adj, (mount_height / 2) - post_adj, 0))
 
 
 def web_post_bl(wide=False):
@@ -628,7 +638,7 @@ def web_post_bl(wide=False):
         w_divide = 1.2
     else:
         w_divide = 2.0
-    return translate(web_post(), (-(mount_width / w_divide) + post_adj, -(mount_height / 2) + post_adj, 0))
+    return geometry_engine.translate(web_post(), (-(mount_width / w_divide) + post_adj, -(mount_height / 2) + post_adj, 0))
 
 
 def web_post_br(wide=False):
@@ -636,7 +646,7 @@ def web_post_br(wide=False):
         w_divide = 1.2
     else:
         w_divide = 2.0
-    return translate(web_post(), ((mount_width / w_divide) - post_adj, -(mount_height / 2) + post_adj, 0))
+    return geometry_engine.translate(web_post(), ((mount_width / w_divide) - post_adj, -(mount_height / 2) + post_adj, 0))
 
 
 def connectors():
@@ -697,7 +707,7 @@ def connectors():
             places.append(key_place(web_post_br(), column, iterrows + 1))
             hulls.append(triangle_hulls(places))
 
-    return union(hulls)
+    return geometry_engine.union(hulls)
     # return add(hulls)
 
 
@@ -721,49 +731,49 @@ def thumborigin():
 
 def default_thumb_tl_place(shape):
     logging.debug("thumb_tl_place()")
-    shape = rotate(shape, [7.5, -18, 10])
-    shape = translate(shape, thumborigin())
-    shape = translate(shape, [-32.5, -14.5, -2.5])
+    shape = geometry_engine.rotate(shape, [7.5, -18, 10])
+    shape = geometry_engine.translate(shape, thumborigin())
+    shape = geometry_engine.translate(shape, [-32.5, -14.5, -2.5])
     return shape
 
 
 def default_thumb_tr_place(shape):
     logging.debug("thumb_tr_place()")
-    shape = rotate(shape, [10, -15, 10])
-    shape = translate(shape, thumborigin())
-    shape = translate(shape, [-12, -16, 3])
+    shape = geometry_engine.rotate(shape, [10, -15, 10])
+    shape = geometry_engine.translate(shape, thumborigin())
+    shape = geometry_engine.translate(shape, [-12, -16, 3])
     return shape
 
 
 def default_thumb_mr_place(shape):
     logging.debug("thumb_mr_place()")
-    shape = rotate(shape, [-6, -34, 48])
-    shape = translate(shape, thumborigin())
-    shape = translate(shape, [-29, -40, -13])
+    shape = geometry_engine.rotate(shape, [-6, -34, 48])
+    shape = geometry_engine.translate(shape, thumborigin())
+    shape = geometry_engine.translate(shape, [-29, -40, -13])
     return shape
 
 
 def default_thumb_ml_place(shape):
     logging.debug("thumb_ml_place()")
-    shape = rotate(shape, [6, -34, 40])
-    shape = translate(shape, thumborigin())
-    shape = translate(shape, [-51, -25, -12])
+    shape = geometry_engine.rotate(shape, [6, -34, 40])
+    shape = geometry_engine.translate(shape, thumborigin())
+    shape = geometry_engine.translate(shape, [-51, -25, -12])
     return shape
 
 
 def default_thumb_br_place(shape):
     logging.debug("thumb_br_place()")
-    shape = rotate(shape, [-16, -33, 54])
-    shape = translate(shape, thumborigin())
-    shape = translate(shape, [-37.8, -55.3, -25.3])
+    shape = geometry_engine.rotate(shape, [-16, -33, 54])
+    shape = geometry_engine.translate(shape, thumborigin())
+    shape = geometry_engine.translate(shape, [-37.8, -55.3, -25.3])
     return shape
 
 
 def default_thumb_bl_place(shape):
     logging.debug("thumb_bl_place()")
-    shape = rotate(shape, [-4, -35, 52])
-    shape = translate(shape, thumborigin())
-    shape = translate(shape, [-56.3, -43.3, -23.5])
+    shape = geometry_engine.rotate(shape, [-4, -35, 52])
+    shape = geometry_engine.translate(shape, thumborigin())
+    shape = geometry_engine.translate(shape, [-56.3, -43.3, -23.5])
     return shape
 
 
@@ -771,34 +781,34 @@ def default_thumb_1x_layout(shape, cap=False):
     logging.debug("thumb_1x_layout()")
     if cap:
         shape_list = [
-            default_thumb_mr_place(rotate(shape, [0, 0, thumb_plate_mr_rotation])),
-            default_thumb_ml_place(rotate(shape, [0, 0, thumb_plate_ml_rotation])),
-            default_thumb_br_place(rotate(shape, [0, 0, thumb_plate_br_rotation])),
-            default_thumb_bl_place(rotate(shape, [0, 0, thumb_plate_bl_rotation])),
+            default_thumb_mr_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_mr_rotation])),
+            default_thumb_ml_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_ml_rotation])),
+            default_thumb_br_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_br_rotation])),
+            default_thumb_bl_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_bl_rotation])),
         ]
 
         if default_1U_cluster:
-            shape_list.append(default_thumb_tr_place(rotate(rotate(shape, (0, 0, 90)), [0, 0, thumb_plate_tr_rotation])))
-            shape_list.append(default_thumb_tr_place(rotate(rotate(shape, (0, 0, 90)), [0, 0, thumb_plate_tr_rotation])))
-            shape_list.append(default_thumb_tl_place(rotate(shape, [0, 0, thumb_plate_tl_rotation])))
+            shape_list.append(default_thumb_tr_place(geometry_engine.rotate(geometry_engine.rotate(shape, (0, 0, 90)), [0, 0, thumb_plate_tr_rotation])))
+            shape_list.append(default_thumb_tr_place(geometry_engine.rotate(geometry_engine.rotate(shape, (0, 0, 90)), [0, 0, thumb_plate_tr_rotation])))
+            shape_list.append(default_thumb_tl_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_tl_rotation])))
         shapes = add(shape_list)
 
     else:
         shape_list = [
-            default_thumb_mr_place(rotate(shape, [0, 0, thumb_plate_mr_rotation])),
-            default_thumb_ml_place(rotate(shape, [0, 0, thumb_plate_ml_rotation])),
-            default_thumb_br_place(rotate(shape, [0, 0, thumb_plate_br_rotation])),
-            default_thumb_bl_place(rotate(shape, [0, 0, thumb_plate_bl_rotation])),
+            default_thumb_mr_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_mr_rotation])),
+            default_thumb_ml_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_ml_rotation])),
+            default_thumb_br_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_br_rotation])),
+            default_thumb_bl_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_bl_rotation])),
         ]
         if default_1U_cluster:
-            shape_list.append(default_thumb_tr_place(rotate(rotate(shape, (0, 0, 90)), [0, 0, thumb_plate_tr_rotation])))
-        shapes = union(shape_list)
+            shape_list.append(default_thumb_tr_place(geometry_engine.rotate(geometry_engine.rotate(shape, (0, 0, 90)), [0, 0, thumb_plate_tr_rotation])))
+        shapes = geometry_engine.union(shape_list)
     return shapes
 
 
 def default_thumb_pcb_plate_cutouts(side="right"):
     shape = default_thumb_1x_layout(plate_pcb_cutout(side=side))
-    shape = union([shape, default_thumb_15x_layout(plate_pcb_cutout(side=side))])
+    shape = geometry_engine.union([shape, default_thumb_15x_layout(plate_pcb_cutout(side=side))])
     return shape
 
 
@@ -806,18 +816,18 @@ def default_thumb_15x_layout(shape, cap=False, plate=True):
     logging.debug("thumb_15x_layout()")
     if plate:
         if cap:
-            shape = rotate(shape, (0, 0, 90))
-            cap_list = [default_thumb_tl_place(rotate(shape, [0, 0, thumb_plate_tl_rotation]))]
-            cap_list.append(default_thumb_tr_place(rotate(shape, [0, 0, thumb_plate_tr_rotation])))
+            shape = geometry_engine.rotate(shape, (0, 0, 90))
+            cap_list = [default_thumb_tl_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_tl_rotation]))]
+            cap_list.append(default_thumb_tr_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_tr_rotation])))
             return add(cap_list)
         else:
-            shape_list = [default_thumb_tl_place(rotate(shape, [0, 0, thumb_plate_tl_rotation]))]
+            shape_list = [default_thumb_tl_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_tl_rotation]))]
             if not default_1U_cluster:
-                shape_list.append(default_thumb_tr_place(rotate(shape, [0, 0, thumb_plate_tr_rotation])))
-            return union(shape_list)
+                shape_list.append(default_thumb_tr_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_tr_rotation])))
+            return geometry_engine.union(shape_list)
     else:
         if cap:
-            shape = rotate(shape, (0, 0, 90))
+            shape = geometry_engine.rotate(shape, (0, 0, 90))
             shape_list = [
                 default_thumb_tl_place(shape),
             ]
@@ -831,7 +841,7 @@ def default_thumb_15x_layout(shape, cap=False, plate=True):
             if not default_1U_cluster:
                 shape_list.append(default_thumb_tr_place(shape))
 
-            return union(shape_list)
+            return geometry_engine.union(shape_list)
 
 
 def adjustable_plate_size(Usize=1.5):
@@ -845,42 +855,42 @@ def usize_dimention(Usize=1.5):
 def adjustable_plate_half(Usize=1.5):
     logging.debug("double_plate()")
     adjustable_plate_height = adjustable_plate_size(Usize)
-    top_plate = box(mount_width, adjustable_plate_height, web_thickness)
-    top_plate = translate(top_plate,
-                          [0, (adjustable_plate_height + mount_height) / 2, plate_thickness - (web_thickness / 2)]
-                          )
+    top_plate = geometry_engine.box(mount_width, adjustable_plate_height, web_thickness)
+    top_plate = geometry_engine.translate(top_plate,
+                                          [0, (adjustable_plate_height + mount_height) / 2, plate_thickness - (web_thickness / 2)]
+                                          )
     return top_plate
 
 
 def adjustable_plate(Usize=1.5):
     logging.debug("double_plate()")
     top_plate = adjustable_plate_half(Usize)
-    return union((top_plate, mirror(top_plate, 'XZ')))
+    return geometry_engine.union((top_plate, geometry_engine.mirror(top_plate, 'XZ')))
 
 
 def adjustable_square_plate(Uwidth=1.5, Uheight=1.5):
     width = usize_dimention(Usize=Uwidth)
     height = usize_dimention(Usize=Uheight)
     print("width: {}, height: {}, thickness:{}".format(width, height, web_thickness))
-    shape = box(width, height, web_thickness)
-    shape = difference(shape, [box(mount_width-.01, mount_height-.01, 2*web_thickness)])
-    shape = translate(shape, (0, 0, web_thickness/2))
+    shape = geometry_engine.box(width, height, web_thickness)
+    shape = geometry_engine.difference(shape, [geometry_engine.box(mount_width-.01, mount_height-.01, 2*web_thickness)])
+    shape = geometry_engine.translate(shape, (0, 0, web_thickness/2))
     return shape
 
 
 def double_plate_half():
     logging.debug("double_plate()")
-    top_plate = box(mount_width, double_plate_height, web_thickness)
-    top_plate = translate(top_plate,
-                          [0, (double_plate_height + mount_height) / 2, plate_thickness - (web_thickness / 2)]
-                          )
+    top_plate = geometry_engine.box(mount_width, double_plate_height, web_thickness)
+    top_plate = geometry_engine.translate(top_plate,
+                                          [0, (double_plate_height + mount_height) / 2, plate_thickness - (web_thickness / 2)]
+                                          )
     return top_plate
 
 
 def double_plate():
     logging.debug("double_plate()")
     top_plate = double_plate_half()
-    return union((top_plate, mirror(top_plate, 'XZ')))
+    return geometry_engine.union((top_plate, geometry_engine.mirror(top_plate, 'XZ')))
 
 
 def thumbcaps(side='right', style_override=None):
@@ -996,42 +1006,42 @@ def default_thumbcaps():
 
 def default_thumb(side="right"):
     logging.debug("thumb()")
-    shape = default_thumb_1x_layout(rotate(single_plate(side=side), (0, 0, -90)))
-    shape = union([shape, default_thumb_15x_layout(rotate(single_plate(side=side), (0, 0, -90)))])
-    shape = union([shape, default_thumb_15x_layout(double_plate(), plate=False)])
-    #shape = add([shape, default_thumb_15x_layout(rotate(single_plate(side=side), (0, 0, -90)))])
+    shape = default_thumb_1x_layout(geometry_engine.rotate(single_plate(side=side), (0, 0, -90)))
+    shape = geometry_engine.union([shape, default_thumb_15x_layout(geometry_engine.rotate(single_plate(side=side), (0, 0, -90)))])
+    shape = geometry_engine.union([shape, default_thumb_15x_layout(double_plate(), plate=False)])
+    #shape = add([shape, default_thumb_15x_layout(geometry_engine.rotate(single_plate(side=side), (0, 0, -90)))])
     #shape = add([shape, default_thumb_15x_layout(double_plate(), plate=False)])
     # if plate_pcb_clear:
-    #     shape = difference(shape, [default_thumb_pcb_plate_cutouts()])
+    #     shape = geometry_engine.difference(shape, [default_thumb_pcb_plate_cutouts()])
     return shape
 
 
 def thumb_post_tr():
     logging.debug("thumb_post_tr()")
-    return translate(web_post(),
-                     [(mount_width / 2) - post_adj, ((mount_height/2) + double_plate_height) - post_adj, 0]
-                     )
+    return geometry_engine.translate(web_post(),
+                                     [(mount_width / 2) - post_adj, ((mount_height/2) + double_plate_height) - post_adj, 0]
+                                     )
 
 
 def thumb_post_tl():
     logging.debug("thumb_post_tl()")
-    return translate(web_post(),
-                     [-(mount_width / 2) + post_adj, ((mount_height/2) + double_plate_height) - post_adj, 0]
-                     )
+    return geometry_engine.translate(web_post(),
+                                     [-(mount_width / 2) + post_adj, ((mount_height/2) + double_plate_height) - post_adj, 0]
+                                     )
 
 
 def thumb_post_bl():
     logging.debug("thumb_post_bl()")
-    return translate(web_post(),
-                     [-(mount_width / 2) + post_adj, -((mount_height/2) + double_plate_height) + post_adj, 0]
-                     )
+    return geometry_engine.translate(web_post(),
+                                     [-(mount_width / 2) + post_adj, -((mount_height/2) + double_plate_height) + post_adj, 0]
+                                     )
 
 
 def thumb_post_br():
     logging.debug("thumb_post_br()")
-    return translate(web_post(),
-                     [(mount_width / 2) - post_adj, -((mount_height/2) + double_plate_height) + post_adj, 0]
-                     )
+    return geometry_engine.translate(web_post(),
+                                     [(mount_width / 2) - post_adj, -((mount_height/2) + double_plate_height) + post_adj, 0]
+                                     )
 
 
 def default_thumb_connectors():
@@ -1192,7 +1202,7 @@ def default_thumb_connectors():
         )
 
     # return add(hulls)
-    return union(hulls)
+    return geometry_engine.union(hulls)
 
 ############################
 # MINI THUMB CLUSTER
@@ -1201,68 +1211,68 @@ def default_thumb_connectors():
 
 def mini_thumb_tr_place(shape):
     if mini_index_key:
-        shape = rotate(shape, [-25, 25, 0])
-        shape = translate(shape, thumborigin())
-        shape = translate(shape, [-12.5, -10, 2])
+        shape = geometry_engine.rotate(shape, [-25, 25, 0])
+        shape = geometry_engine.translate(shape, thumborigin())
+        shape = geometry_engine.translate(shape, [-12.5, -10, 2])
     else:
-        shape = rotate(shape, [14, -15, 10])
-        shape = translate(shape, thumborigin())
-        shape = translate(shape, [-15, -10, 5])
+        shape = geometry_engine.rotate(shape, [14, -15, 10])
+        shape = geometry_engine.translate(shape, thumborigin())
+        shape = geometry_engine.translate(shape, [-15, -10, 5])
     return shape
 
 
 def mini_thumb_tl_place(shape):
-    shape = rotate(shape, [10, -23, 25])
-    shape = translate(shape, thumborigin())
-    shape = translate(shape, [-35, -16, -2])
+    shape = geometry_engine.rotate(shape, [10, -23, 25])
+    shape = geometry_engine.translate(shape, thumborigin())
+    shape = geometry_engine.translate(shape, [-35, -16, -2])
     return shape
 
 
 def mini_thumb_mr_place(shape):
-    shape = rotate(shape, [10, -23, 25])
-    shape = translate(shape, thumborigin())
-    shape = translate(shape, [-23, -34, -6])
+    shape = geometry_engine.rotate(shape, [10, -23, 25])
+    shape = geometry_engine.translate(shape, thumborigin())
+    shape = geometry_engine.translate(shape, [-23, -34, -6])
     return shape
 
 
 def mini_thumb_br_place(shape):
-    shape = rotate(shape, [6, -34, 35])
-    shape = translate(shape, thumborigin())
-    shape = translate(shape, [-39, -43, -16])
+    shape = geometry_engine.rotate(shape, [6, -34, 35])
+    shape = geometry_engine.translate(shape, thumborigin())
+    shape = geometry_engine.translate(shape, [-39, -43, -16])
     return shape
 
 
 def mini_thumb_bl_place(shape):
-    shape = rotate(shape, [6, -32, 35])
-    shape = translate(shape, thumborigin())
-    shape = translate(shape, [-51, -25, -11.5])
+    shape = geometry_engine.rotate(shape, [6, -32, 35])
+    shape = geometry_engine.translate(shape, thumborigin())
+    shape = geometry_engine.translate(shape, [-51, -25, -11.5])
     return shape
 
 
 def mini_thumb_1x_layout(shape):
-    return union([
+    return geometry_engine.union([
         # return add([
-        mini_thumb_mr_place(rotate(shape, [0, 0, thumb_plate_mr_rotation])),
-        mini_thumb_br_place(rotate(shape, [0, 0, thumb_plate_br_rotation])),
-        mini_thumb_tl_place(rotate(shape, [0, 0, thumb_plate_tl_rotation])),
-        mini_thumb_bl_place(rotate(shape, [0, 0, thumb_plate_bl_rotation])),
+        mini_thumb_mr_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_mr_rotation])),
+        mini_thumb_br_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_br_rotation])),
+        mini_thumb_tl_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_tl_rotation])),
+        mini_thumb_bl_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_bl_rotation])),
     ])
 
 
 def mini_thumb_15x_layout(shape):
-    return union([mini_thumb_tr_place(rotate(shape, [0, 0, thumb_plate_tr_rotation]))])
-    # return add([mini_thumb_tr_place(rotate(shape, [0, 0, thumb_plate_tr_rotation]))])
+    return geometry_engine.union([mini_thumb_tr_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_tr_rotation]))])
+    # return add([mini_thumb_tr_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_tr_rotation]))])
 
 
 def mini_thumbcaps():
     t1 = mini_thumb_1x_layout(keycap(1))
-    t15 = mini_thumb_15x_layout(rotate(keycap(1), [0, 0, 90]))
+    t15 = mini_thumb_15x_layout(geometry_engine.rotate(keycap(1), [0, 0, 90]))
     return t1.add(t15)
 
 
 def mini_thumb(side="right"):
     shape = mini_thumb_1x_layout(single_plate(side=side))
-    shape = union([shape, mini_thumb_15x_layout(single_plate(side=side))])
+    shape = geometry_engine.union([shape, mini_thumb_15x_layout(single_plate(side=side))])
     #shape = add([shape, mini_thumb_15x_layout(single_plate(side=side))])
 
     return shape
@@ -1270,33 +1280,33 @@ def mini_thumb(side="right"):
 
 def mini_thumb_pcb_plate_cutouts(side="right"):
     shape = mini_thumb_1x_layout(plate_pcb_cutout(side=side))
-    shape = union([shape, mini_thumb_15x_layout(plate_pcb_cutout(side=side))])
+    shape = geometry_engine.union([shape, mini_thumb_15x_layout(plate_pcb_cutout(side=side))])
     #shape = add([shape, mini_thumb_15x_layout(plate_pcb_cutout(side=side))])
     return shape
 
 
 def mini_thumb_post_tr():
-    return translate(web_post(),
-                     [(mount_width / 2) - post_adj, (mount_height / 2) - post_adj, 0]
-                     )
+    return geometry_engine.translate(web_post(),
+                                     [(mount_width / 2) - post_adj, (mount_height / 2) - post_adj, 0]
+                                     )
 
 
 def mini_thumb_post_tl():
-    return translate(web_post(),
-                     [-(mount_width / 2) + post_adj, (mount_height / 2) - post_adj, 0]
-                     )
+    return geometry_engine.translate(web_post(),
+                                     [-(mount_width / 2) + post_adj, (mount_height / 2) - post_adj, 0]
+                                     )
 
 
 def mini_thumb_post_bl():
-    return translate(web_post(),
-                     [-(mount_width / 2) + post_adj, -(mount_height / 2) + post_adj, 0]
-                     )
+    return geometry_engine.translate(web_post(),
+                                     [-(mount_width / 2) + post_adj, -(mount_height / 2) + post_adj, 0]
+                                     )
 
 
 def mini_thumb_post_br():
-    return translate(web_post(),
-                     [(mount_width / 2) - post_adj, -(mount_height / 2) + post_adj, 0]
-                     )
+    return geometry_engine.translate(web_post(),
+                                     [(mount_width / 2) - post_adj, -(mount_height / 2) + post_adj, 0]
+                                     )
 
 
 def mini_thumb_connectors():
@@ -1393,7 +1403,7 @@ def mini_thumb_connectors():
         )
     )
 
-    return union(hulls)
+    return geometry_engine.union(hulls)
     # return add(hulls)
 
 
@@ -1402,41 +1412,41 @@ def mini_thumb_connectors():
 ############################
 
 def minidox_thumb_tl_place(shape):
-    shape = rotate(shape, [10, -23, 25])
-    shape = translate(shape, thumborigin())
-    shape = translate(shape, [-35, -16, -2])
+    shape = geometry_engine.rotate(shape, [10, -23, 25])
+    shape = geometry_engine.translate(shape, thumborigin())
+    shape = geometry_engine.translate(shape, [-35, -16, -2])
     return shape
 
 
 def minidox_thumb_tr_place(shape):
-    shape = rotate(shape, [14, -15, 10])
-    shape = translate(shape, thumborigin())
-    shape = translate(shape, [-15, -10, 5])
+    shape = geometry_engine.rotate(shape, [14, -15, 10])
+    shape = geometry_engine.translate(shape, thumborigin())
+    shape = geometry_engine.translate(shape, [-15, -10, 5])
     return shape
 
 
 def minidox_thumb_ml_place(shape):
-    shape = rotate(shape, [6, -34, 40])
-    shape = translate(shape, thumborigin())
-    shape = translate(shape, [-53, -26, -12])
+    shape = geometry_engine.rotate(shape, [6, -34, 40])
+    shape = geometry_engine.translate(shape, thumborigin())
+    shape = geometry_engine.translate(shape, [-53, -26, -12])
     return shape
 
 
 def minidox_thumb_1x_layout(shape):
-    return union([
+    return geometry_engine.union([
         # return add([
-        minidox_thumb_tr_place(rotate(shape, [0, 0, thumb_plate_tr_rotation])),
-        minidox_thumb_tl_place(rotate(shape, [0, 0, thumb_plate_tl_rotation])),
-        minidox_thumb_ml_place(rotate(shape, [0, 0, thumb_plate_ml_rotation])),
+        minidox_thumb_tr_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_tr_rotation])),
+        minidox_thumb_tl_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_tl_rotation])),
+        minidox_thumb_ml_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_ml_rotation])),
     ])
 
 
 def minidox_thumb_fx_layout(shape):
-    return union([
+    return geometry_engine.union([
         # return add([
-        minidox_thumb_tr_place(rotate(shape, [0, 0, thumb_plate_tr_rotation])),
-        minidox_thumb_tl_place(rotate(shape, [0, 0, thumb_plate_tl_rotation])),
-        minidox_thumb_ml_place(rotate(shape, [0, 0, thumb_plate_ml_rotation])),
+        minidox_thumb_tr_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_tr_rotation])),
+        minidox_thumb_tl_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_tl_rotation])),
+        minidox_thumb_ml_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_ml_rotation])),
     ])
 
 
@@ -1447,8 +1457,8 @@ def minidox_thumbcaps():
 
 def minidox_thumb(side="right"):
 
-    shape = minidox_thumb_fx_layout(rotate(single_plate(side=side), [0.0, 0.0, -90]))
-    shape = union([shape, minidox_thumb_fx_layout(adjustable_plate(minidox_Usize))])
+    shape = minidox_thumb_fx_layout(geometry_engine.rotate(single_plate(side=side), [0.0, 0.0, -90]))
+    shape = geometry_engine.union([shape, minidox_thumb_fx_layout(adjustable_plate(minidox_Usize))])
     #shape = add([shape, minidox_thumb_fx_layout(adjustable_plate(minidox_Usize))])
     # shape = minidox_thumb_1x_layout(single_plate(side=side))
     return shape
@@ -1456,37 +1466,37 @@ def minidox_thumb(side="right"):
 
 def minidox_thumb_pcb_plate_cutouts(side="right"):
     shape = minidox_thumb_fx_layout(plate_pcb_cutout(side=side))
-    shape = union([shape, minidox_thumb_fx_layout(plate_pcb_cutout())])
+    shape = geometry_engine.union([shape, minidox_thumb_fx_layout(plate_pcb_cutout())])
     #shape = add([shape, minidox_thumb_fx_layout(plate_pcb_cutout())])
     return shape
 
 
 def minidox_thumb_post_tr():
     logging.debug("thumb_post_tr()")
-    return translate(web_post(),
-                     [(mount_width / 2) - post_adj, ((mount_height/2) + adjustable_plate_size(minidox_Usize)) - post_adj, 0]
-                     )
+    return geometry_engine.translate(web_post(),
+                                     [(mount_width / 2) - post_adj, ((mount_height/2) + adjustable_plate_size(minidox_Usize)) - post_adj, 0]
+                                     )
 
 
 def minidox_thumb_post_tl():
     logging.debug("thumb_post_tl()")
-    return translate(web_post(),
-                     [-(mount_width / 2) + post_adj, ((mount_height/2) + adjustable_plate_size(minidox_Usize)) - post_adj, 0]
-                     )
+    return geometry_engine.translate(web_post(),
+                                     [-(mount_width / 2) + post_adj, ((mount_height/2) + adjustable_plate_size(minidox_Usize)) - post_adj, 0]
+                                     )
 
 
 def minidox_thumb_post_bl():
     logging.debug("thumb_post_bl()")
-    return translate(web_post(),
-                     [-(mount_width / 2) + post_adj, -((mount_height/2) + adjustable_plate_size(minidox_Usize)) + post_adj, 0]
-                     )
+    return geometry_engine.translate(web_post(),
+                                     [-(mount_width / 2) + post_adj, -((mount_height/2) + adjustable_plate_size(minidox_Usize)) + post_adj, 0]
+                                     )
 
 
 def minidox_thumb_post_br():
     logging.debug("thumb_post_br()")
-    return translate(web_post(),
-                     [(mount_width / 2) - post_adj, -((mount_height/2) + adjustable_plate_size(minidox_Usize)) + post_adj, 0]
-                     )
+    return geometry_engine.translate(web_post(),
+                                     [(mount_width / 2) - post_adj, -((mount_height/2) + adjustable_plate_size(minidox_Usize)) + post_adj, 0]
+                                     )
 
 
 def minidox_thumb_connectors():
@@ -1538,7 +1548,7 @@ def minidox_thumb_connectors():
         )
     )
 
-    return union(hulls)
+    return geometry_engine.union(hulls)
     # return add(hulls)
 
 
@@ -1548,66 +1558,66 @@ def minidox_thumb_connectors():
 
 
 def carbonfet_thumb_tl_place(shape):
-    shape = rotate(shape, [10, -24, 10])
-    shape = translate(shape, thumborigin())
-    shape = translate(shape, [-13, -9.8, 4])
+    shape = geometry_engine.rotate(shape, [10, -24, 10])
+    shape = geometry_engine.translate(shape, thumborigin())
+    shape = geometry_engine.translate(shape, [-13, -9.8, 4])
     return shape
 
 
 def carbonfet_thumb_tr_place(shape):
-    shape = rotate(shape, [6, -25, 10])
-    shape = translate(shape, thumborigin())
-    shape = translate(shape, [-7.5, -29.5, 0])
+    shape = geometry_engine.rotate(shape, [6, -25, 10])
+    shape = geometry_engine.translate(shape, thumborigin())
+    shape = geometry_engine.translate(shape, [-7.5, -29.5, 0])
     return shape
 
 
 def carbonfet_thumb_ml_place(shape):
-    shape = rotate(shape, [8, -31, 14])
-    shape = translate(shape, thumborigin())
-    shape = translate(shape, [-30.5, -17, -6])
+    shape = geometry_engine.rotate(shape, [8, -31, 14])
+    shape = geometry_engine.translate(shape, thumborigin())
+    shape = geometry_engine.translate(shape, [-30.5, -17, -6])
     return shape
 
 
 def carbonfet_thumb_mr_place(shape):
-    shape = rotate(shape, [4, -31, 14])
-    shape = translate(shape, thumborigin())
-    shape = translate(shape, [-22.2, -41, -10.3])
+    shape = geometry_engine.rotate(shape, [4, -31, 14])
+    shape = geometry_engine.translate(shape, thumborigin())
+    shape = geometry_engine.translate(shape, [-22.2, -41, -10.3])
     return shape
 
 
 def carbonfet_thumb_br_place(shape):
-    shape = rotate(shape, [2, -37, 18])
-    shape = translate(shape, thumborigin())
-    shape = translate(shape, [-37, -46.4, -22])
+    shape = geometry_engine.rotate(shape, [2, -37, 18])
+    shape = geometry_engine.translate(shape, thumborigin())
+    shape = geometry_engine.translate(shape, [-37, -46.4, -22])
     return shape
 
 
 def carbonfet_thumb_bl_place(shape):
-    shape = rotate(shape, [6, -37, 18])
-    shape = translate(shape, thumborigin())
-    shape = translate(shape, [-47, -23, -19])
+    shape = geometry_engine.rotate(shape, [6, -37, 18])
+    shape = geometry_engine.translate(shape, thumborigin())
+    shape = geometry_engine.translate(shape, [-47, -23, -19])
     return shape
 
 
 def carbonfet_thumb_1x_layout(shape):
-    return union([
+    return geometry_engine.union([
         # return add([
-        carbonfet_thumb_tr_place(rotate(shape, [0, 0, thumb_plate_tr_rotation])),
-        carbonfet_thumb_mr_place(rotate(shape, [0, 0, thumb_plate_mr_rotation])),
-        carbonfet_thumb_br_place(rotate(shape, [0, 0, thumb_plate_br_rotation])),
-        carbonfet_thumb_tl_place(rotate(shape, [0, 0, thumb_plate_tl_rotation])),
+        carbonfet_thumb_tr_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_tr_rotation])),
+        carbonfet_thumb_mr_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_mr_rotation])),
+        carbonfet_thumb_br_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_br_rotation])),
+        carbonfet_thumb_tl_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_tl_rotation])),
     ])
 
 
 def carbonfet_thumb_15x_layout(shape, plate=True):
     if plate:
-        return union([
+        return geometry_engine.union([
             # return add([
-            carbonfet_thumb_bl_place(rotate(shape, [0, 0, thumb_plate_bl_rotation])),
-            carbonfet_thumb_ml_place(rotate(shape, [0, 0, thumb_plate_ml_rotation]))
+            carbonfet_thumb_bl_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_bl_rotation])),
+            carbonfet_thumb_ml_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_ml_rotation]))
         ])
     else:
-        return union([
+        return geometry_engine.union([
             # return add([
             carbonfet_thumb_bl_place(shape),
             carbonfet_thumb_ml_place(shape)
@@ -1616,14 +1626,14 @@ def carbonfet_thumb_15x_layout(shape, plate=True):
 
 def carbonfet_thumbcaps():
     t1 = carbonfet_thumb_1x_layout(keycap(1))
-    t15 = carbonfet_thumb_15x_layout(rotate(keycap(1.5), [0, 0, 90]))
+    t15 = carbonfet_thumb_15x_layout(geometry_engine.rotate(keycap(1.5), [0, 0, 90]))
     return t1.add(t15)
 
 
 def carbonfet_thumb(side="right"):
     shape = carbonfet_thumb_1x_layout(single_plate(side=side))
-    shape = union([shape, carbonfet_thumb_15x_layout(double_plate_half(), plate=False)])
-    shape = union([shape, carbonfet_thumb_15x_layout(single_plate(side=side))])
+    shape = geometry_engine.union([shape, carbonfet_thumb_15x_layout(double_plate_half(), plate=False)])
+    shape = geometry_engine.union([shape, carbonfet_thumb_15x_layout(single_plate(side=side))])
     #shape = add([shape, carbonfet_thumb_15x_layout(double_plate_half(), plate=False)])
     #shape = add([shape, carbonfet_thumb_15x_layout(single_plate(side=side))])
 
@@ -1632,33 +1642,33 @@ def carbonfet_thumb(side="right"):
 
 def carbonfet_thumb_pcb_plate_cutouts(side="right"):
     shape = carbonfet_thumb_1x_layout(plate_pcb_cutout(side=side))
-    shape = union([shape, carbonfet_thumb_15x_layout(plate_pcb_cutout())])
+    shape = geometry_engine.union([shape, carbonfet_thumb_15x_layout(plate_pcb_cutout())])
     #shape = add([shape, carbonfet_thumb_15x_layout(plate_pcb_cutout())])
     return shape
 
 
 def carbonfet_thumb_post_tr():
-    return translate(web_post(),
-                     [(mount_width / 2) - post_adj, (mount_height / 1.15) - post_adj, 0]
-                     )
+    return geometry_engine.translate(web_post(),
+                                     [(mount_width / 2) - post_adj, (mount_height / 1.15) - post_adj, 0]
+                                     )
 
 
 def carbonfet_thumb_post_tl():
-    return translate(web_post(),
-                     [-(mount_width / 2) + post_adj, (mount_height / 1.15) - post_adj, 0]
-                     )
+    return geometry_engine.translate(web_post(),
+                                     [-(mount_width / 2) + post_adj, (mount_height / 1.15) - post_adj, 0]
+                                     )
 
 
 def carbonfet_thumb_post_bl():
-    return translate(web_post(),
-                     [-(mount_width / 2) + post_adj, -(mount_height / 1.15) + post_adj, 0]
-                     )
+    return geometry_engine.translate(web_post(),
+                                     [-(mount_width / 2) + post_adj, -(mount_height / 1.15) + post_adj, 0]
+                                     )
 
 
 def carbonfet_thumb_post_br():
-    return translate(web_post(),
-                     [(mount_width / 2) - post_adj, -(mount_height / 2) + post_adj, 0]
-                     )
+    return geometry_engine.translate(web_post(),
+                                     [(mount_width / 2) - post_adj, -(mount_height / 2) + post_adj, 0]
+                                     )
 
 
 def carbonfet_thumb_connectors():
@@ -1773,7 +1783,7 @@ def carbonfet_thumb_connectors():
         )
     )
 
-    return union(hulls)
+    return geometry_engine.union(hulls)
     # return add(hulls)
 
 
@@ -1797,19 +1807,19 @@ def tbjs_thumb_position_rotation():
 
 def tbjs_place(shape):
     pos, rot = tbjs_thumb_position_rotation()
-    shape = rotate(shape, rot)
-    shape = translate(shape, pos)
+    shape = geometry_engine.rotate(shape, rot)
+    shape = geometry_engine.translate(shape, pos)
     return shape
 
 
 def tbjs_thumb_tl_place(shape):
     logging.debug("thumb_tr_place()")
     # Modifying to make a "ring" of keys
-    shape = rotate(shape, [0, 0, 0])
+    shape = geometry_engine.rotate(shape, [0, 0, 0])
     t_off = tbjs_key_translation_offsets[0]
-    shape = rotate(shape, tbjs_key_rotation_offsets[0])
-    shape = translate(shape, (t_off[0], t_off[1]+tbjs_key_diameter/2, t_off[2]))
-    shape = rotate(shape, [0, 0, -80])
+    shape = geometry_engine.rotate(shape, tbjs_key_rotation_offsets[0])
+    shape = geometry_engine.translate(shape, (t_off[0], t_off[1]+tbjs_key_diameter/2, t_off[2]))
+    shape = geometry_engine.rotate(shape, [0, 0, -80])
     shape = tbjs_place(shape)
 
     return shape
@@ -1817,11 +1827,11 @@ def tbjs_thumb_tl_place(shape):
 
 def tbjs_thumb_mr_place(shape):
     logging.debug("thumb_mr_place()")
-    shape = rotate(shape, [0, 0, 0])
-    shape = rotate(shape, tbjs_key_rotation_offsets[1])
+    shape = geometry_engine.rotate(shape, [0, 0, 0])
+    shape = geometry_engine.rotate(shape, tbjs_key_rotation_offsets[1])
     t_off = tbjs_key_translation_offsets[1]
-    shape = translate(shape, (t_off[0], t_off[1]+tbjs_key_diameter/2, t_off[2]))
-    shape = rotate(shape, [0, 0, -130])
+    shape = geometry_engine.translate(shape, (t_off[0], t_off[1]+tbjs_key_diameter/2, t_off[2]))
+    shape = geometry_engine.rotate(shape, [0, 0, -130])
     shape = tbjs_place(shape)
 
     return shape
@@ -1830,11 +1840,11 @@ def tbjs_thumb_mr_place(shape):
 def tbjs_thumb_br_place(shape):
     logging.debug("thumb_br_place()")
 
-    shape = rotate(shape, [0, 0, 180])
-    shape = rotate(shape, tbjs_key_rotation_offsets[2])
+    shape = geometry_engine.rotate(shape, [0, 0, 180])
+    shape = geometry_engine.rotate(shape, tbjs_key_rotation_offsets[2])
     t_off = tbjs_key_translation_offsets[2]
-    shape = translate(shape, (t_off[0], t_off[1]+tbjs_key_diameter/2, t_off[2]))
-    shape = rotate(shape, [0, 0, -180])
+    shape = geometry_engine.translate(shape, (t_off[0], t_off[1]+tbjs_key_diameter/2, t_off[2]))
+    shape = geometry_engine.rotate(shape, [0, 0, -180])
     shape = tbjs_place(shape)
 
     return shape
@@ -1842,23 +1852,23 @@ def tbjs_thumb_br_place(shape):
 
 def tbjs_thumb_bl_place(shape):
     logging.debug("thumb_bl_place()")
-    shape = rotate(shape, [0, 0, 180])
-    shape = rotate(shape, tbjs_key_rotation_offsets[3])
+    shape = geometry_engine.rotate(shape, [0, 0, 180])
+    shape = geometry_engine.rotate(shape, tbjs_key_rotation_offsets[3])
     t_off = tbjs_key_translation_offsets[3]
-    shape = translate(shape, (t_off[0], t_off[1]+tbjs_key_diameter/2, t_off[2]))
-    shape = rotate(shape, [0, 0, -230])
+    shape = geometry_engine.translate(shape, (t_off[0], t_off[1]+tbjs_key_diameter/2, t_off[2]))
+    shape = geometry_engine.rotate(shape, [0, 0, -230])
     shape = tbjs_place(shape)
 
     return shape
 
 
 def tbjs_thumb_1x_layout(shape):
-    return union([
+    return geometry_engine.union([
         # return add([
-        tbjs_thumb_tl_place(rotate(shape, [0, 0, thumb_plate_tr_rotation])),
-        tbjs_thumb_mr_place(rotate(shape, [0, 0, thumb_plate_mr_rotation])),
-        tbjs_thumb_bl_place(rotate(shape, [0, 0, thumb_plate_bl_rotation])),
-        tbjs_thumb_br_place(rotate(shape, [0, 0, thumb_plate_br_rotation])),
+        tbjs_thumb_tl_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_tr_rotation])),
+        tbjs_thumb_mr_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_mr_rotation])),
+        tbjs_thumb_bl_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_bl_rotation])),
+        tbjs_thumb_br_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_br_rotation])),
     ])
 
 
@@ -1868,15 +1878,15 @@ def tbjs_thumb_pcb_plate_cutouts(side="right"):
 
 def tbjs_thumb_fx_layout(shape):
     return [
-        tbjs_thumb_tl_place(rotate(shape, [0, 0, thumb_plate_tr_rotation])),
-        tbjs_thumb_mr_place(rotate(shape, [0, 0, thumb_plate_mr_rotation])),
-        tbjs_thumb_bl_place(rotate(shape, [0, 0, thumb_plate_bl_rotation])),
-        tbjs_thumb_br_place(rotate(shape, [0, 0, thumb_plate_br_rotation])),
+        tbjs_thumb_tl_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_tr_rotation])),
+        tbjs_thumb_mr_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_mr_rotation])),
+        tbjs_thumb_bl_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_bl_rotation])),
+        tbjs_thumb_br_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_br_rotation])),
     ]
 
 
 def trackball_layout(shape):
-    return union([
+    return geometry_engine.union([
         # return add([
         tbjs_place(shape),
     ])
@@ -1888,91 +1898,95 @@ def tbjs_thumbcaps():
 
 
 def tbjs_thumb(side="right"):
-    # shape = tbjs_thumb_fx_layout(rotate(single_plate(side=side), [0.0, 0.0, -90]))
+    # shape = tbjs_thumb_fx_layout(geometry_engine.rotate(single_plate(side=side), [0.0, 0.0, -90]))
     shape = tbjs_thumb_1x_layout(single_plate(side=side))
     # shape = tbjs_thumb_fx_layout(adjustable_square_plate(Uwidth=tbjs_Uwidth, Uheight=tbjs_Uheight))
-    shape = union([shape, *tbjs_thumb_fx_layout(adjustable_square_plate(Uwidth=tbjs_Uwidth, Uheight=tbjs_Uheight))])
+    shape = geometry_engine.union([shape, *tbjs_thumb_fx_layout(adjustable_square_plate(Uwidth=tbjs_Uwidth, Uheight=tbjs_Uheight))])
     #shape = add([shape, *tbjs_thumb_fx_layout(adjustable_square_plate(Uwidth=tbjs_Uwidth, Uheight=tbjs_Uheight))])
 
-    # shape = union([shape, trackball_layout(trackball_socket())])
+    # shape = geometry_engine.union([shape, trackball_layout(trackball_socket())])
     # shape = tbjs_thumb_1x_layout(single_plate(side=side))
     return shape
 
 
 def tbjs_thumb_post_tr():
     logging.debug("thumb_post_tr()")
-    return translate(web_post(),
-                     [(mount_width / 2) + adjustable_plate_size(tbjs_Uwidth) - post_adj, ((mount_height/2) + adjustable_plate_size(tbjs_Uheight)) - post_adj, 0]
-                     )
+    return geometry_engine.translate(web_post(),
+                                     [(mount_width / 2) + adjustable_plate_size(tbjs_Uwidth) - post_adj,
+                                      ((mount_height/2) + adjustable_plate_size(tbjs_Uheight)) - post_adj, 0]
+                                     )
 
 
 def tbjs_thumb_post_tl():
     logging.debug("thumb_post_tl()")
-    return translate(web_post(),
-                     [-(mount_width / 2) - adjustable_plate_size(tbjs_Uwidth) + post_adj, ((mount_height/2) + adjustable_plate_size(tbjs_Uheight)) - post_adj, 0]
-                     )
+    return geometry_engine.translate(web_post(),
+                                     [-(mount_width / 2) - adjustable_plate_size(tbjs_Uwidth) + post_adj,
+                                      ((mount_height/2) + adjustable_plate_size(tbjs_Uheight)) - post_adj, 0]
+                                     )
 
 
 def tbjs_thumb_post_bl():
     logging.debug("thumb_post_bl()")
-    return translate(web_post(),
-                     [-(mount_width / 2) - adjustable_plate_size(tbjs_Uwidth) + post_adj, -((mount_height/2) + adjustable_plate_size(tbjs_Uheight)) + post_adj, 0]
-                     )
+    return geometry_engine.translate(web_post(),
+                                     [-(mount_width / 2) - adjustable_plate_size(tbjs_Uwidth) + post_adj, -
+                                      ((mount_height/2) + adjustable_plate_size(tbjs_Uheight)) + post_adj, 0]
+                                     )
 
 
 def tbjs_thumb_post_br():
     logging.debug("thumb_post_br()")
-    return translate(web_post(),
-                     [(mount_width / 2) + adjustable_plate_size(tbjs_Uwidth) - post_adj, - ((mount_height/2) + adjustable_plate_size(tbjs_Uheight)) + post_adj, 0]
-                     )
+    return geometry_engine.translate(web_post(),
+                                     [(mount_width / 2) + adjustable_plate_size(tbjs_Uwidth) - post_adj, -
+                                      ((mount_height/2) + adjustable_plate_size(tbjs_Uheight)) + post_adj, 0]
+                                     )
 
 
 def tbjs_post_r():
     logging.debug("tbjs_post_r()")
     radius = ball_diameter/2 + ball_wall_thickness + ball_gap
-    return translate(web_post(),
-                     [1.0*(radius - post_adj), 0.0*(radius - post_adj), 0]
-                     )
+    return geometry_engine.translate(web_post(),
+                                     [1.0*(radius - post_adj), 0.0*(radius - post_adj), 0]
+                                     )
 
 
 def tbjs_post_tr():
     logging.debug("tbjs_post_tr()")
     radius = ball_diameter/2+ball_wall_thickness + ball_gap
-    return translate(web_post(),
-                     [0.5*(radius - post_adj), 0.866*(radius - post_adj), 0]
-                     )
+    return geometry_engine.translate(web_post(),
+                                     [0.5*(radius - post_adj), 0.866*(radius - post_adj), 0]
+                                     )
 
 
 def tbjs_post_tl():
     logging.debug("tbjs_post_tl()")
     radius = ball_diameter/2+ball_wall_thickness + ball_gap
-    return translate(web_post(),
-                     [-0.5*(radius - post_adj), 0.866*(radius - post_adj), 0]
-                     )
+    return geometry_engine.translate(web_post(),
+                                     [-0.5*(radius - post_adj), 0.866*(radius - post_adj), 0]
+                                     )
 
 
 def tbjs_post_l():
     logging.debug("tbjs_post_l()")
     radius = ball_diameter/2+ball_wall_thickness + ball_gap
-    return translate(web_post(),
-                     [-1.0*(radius - post_adj), 0.0*(radius - post_adj), 0]
-                     )
+    return geometry_engine.translate(web_post(),
+                                     [-1.0*(radius - post_adj), 0.0*(radius - post_adj), 0]
+                                     )
 
 
 def tbjs_post_bl():
     logging.debug("tbjs_post_bl()")
     radius = ball_diameter/2+ball_wall_thickness + ball_gap
-    return translate(web_post(),
-                     [-0.5*(radius - post_adj), -0.866*(radius - post_adj), 0]
-                     )
+    return geometry_engine.translate(web_post(),
+                                     [-0.5*(radius - post_adj), -0.866*(radius - post_adj), 0]
+                                     )
 
 
 def tbjs_post_br():
     logging.debug("tbjs_post_br()")
     radius = ball_diameter/2+ball_wall_thickness + ball_gap
-    return translate(web_post(),
-                     [0.5*(radius - post_adj), -0.866*(radius - post_adj), 0]
-                     )
+    return geometry_engine.translate(web_post(),
+                                     [0.5*(radius - post_adj), -0.866*(radius - post_adj), 0]
+                                     )
 
 
 def tbjs_thumb_connectors():
@@ -2041,7 +2055,7 @@ def tbjs_thumb_connectors():
         )
     )
 
-    return union(hulls)
+    return geometry_engine.union(hulls)
     # return add(hulls)
 
 
@@ -2052,40 +2066,40 @@ def tbjs_thumb_connectors():
 # single_plate = the switch shape
 
 def tbcj_thumb_tr_place(shape):
-    shape = rotate(shape, [10, -15, 10])
-    shape = translate(shape, thumborigin())
-    shape = translate(shape, [-12, -16, 3])
+    shape = geometry_engine.rotate(shape, [10, -15, 10])
+    shape = geometry_engine.translate(shape, thumborigin())
+    shape = geometry_engine.translate(shape, [-12, -16, 3])
     return shape
 
 
 def tbcj_thumb_tl_place(shape):
-    shape = rotate(shape, [7.5, -18, 10])
-    shape = translate(shape, thumborigin())
-    shape = translate(shape, [-32.5, -14.5, -2.5])
+    shape = geometry_engine.rotate(shape, [7.5, -18, 10])
+    shape = geometry_engine.translate(shape, thumborigin())
+    shape = geometry_engine.translate(shape, [-32.5, -14.5, -2.5])
     return shape
 
 
 def tbcj_thumb_ml_place(shape):
-    shape = rotate(shape, [6, -34, 40])
-    shape = translate(shape, thumborigin())
-    shape = translate(shape, [-51, -25, -12])
+    shape = geometry_engine.rotate(shape, [6, -34, 40])
+    shape = geometry_engine.translate(shape, thumborigin())
+    shape = geometry_engine.translate(shape, [-51, -25, -12])
     return shape
 
 
 def tbcj_thumb_bl_place(shape):
-    shape = rotate(shape, [-4, -35, 52])
-    shape = translate(shape, thumborigin())
-    shape = translate(shape, [-56.3, -43.3, -23.5])
+    shape = geometry_engine.rotate(shape, [-4, -35, 52])
+    shape = geometry_engine.translate(shape, thumborigin())
+    shape = geometry_engine.translate(shape, [-56.3, -43.3, -23.5])
     return shape
 
 
 def tbcj_thumb_layout(shape):
-    return union([
+    return geometry_engine.union([
         # return add([
-        tbcj_thumb_tr_place(rotate(shape, [0, 0, thumb_plate_tr_rotation])),
-        tbcj_thumb_tl_place(rotate(shape, [0, 0, thumb_plate_tl_rotation])),
-        tbcj_thumb_ml_place(rotate(shape, [0, 0, thumb_plate_ml_rotation])),
-        tbcj_thumb_bl_place(rotate(shape, [0, 0, thumb_plate_bl_rotation])),
+        tbcj_thumb_tr_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_tr_rotation])),
+        tbcj_thumb_tl_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_tl_rotation])),
+        tbcj_thumb_ml_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_ml_rotation])),
+        tbcj_thumb_bl_place(geometry_engine.rotate(shape, [0, 0, thumb_plate_bl_rotation])),
     ])
 
 
@@ -2095,7 +2109,7 @@ def tbcj_thumb_layout(shape):
 #    points_x = [1, 2, 2, 1, -1, -2, -2, -1]
 #    points_y = [2, 1, -1, -2, -2, -1, 1, 2]
 #
-#    return translate(shape, (points_x[i] * radius / 2, points_y[i] * radius / 2, 0))
+#    return geometry_engine.translate(shape, (points_x[i] * radius / 2, points_y[i] * radius / 2, 0))
 
 
 def oct_corner(i, diameter, shape):
@@ -2108,37 +2122,37 @@ def oct_corner(i, diameter, shape):
     points_x = [m, r, r, m, -m, -r, -r, -m]
     points_y = [r, m, -m, -r, -r, -m, m, r]
 
-    return translate(shape, (points_x[i], points_y[i], 0))
+    return geometry_engine.translate(shape, (points_x[i], points_y[i], 0))
 
 
 def tbcj_edge_post(i):
-    shape = box(post_size, post_size, tbcj_thickness)
+    shape = geometry_engine.box(post_size, post_size, tbcj_thickness)
     shape = oct_corner(i, tbcj_outer_diameter, shape)
     return shape
 
 
 def tbcj_web_post(i):
-    shape = box(post_size, post_size, tbcj_thickness)
+    shape = geometry_engine.box(post_size, post_size, tbcj_thickness)
     shape = oct_corner(i, tbcj_outer_diameter, shape)
     return shape
 
 
 def tbcj_holder():
-    center = box(post_size, post_size, tbcj_thickness)
+    center = geometry_engine.box(post_size, post_size, tbcj_thickness)
 
     shape = []
     for i in range(8):
-        shape_ = hull_from_shapes([
+        shape_ = geometry_engine.convex_hull([
             center,
             tbcj_edge_post(i),
             tbcj_edge_post(i + 1),
         ])
         shape.append(shape_)
-    shape = union(shape)
+    shape = geometry_engine.union(shape)
 
-    shape = difference(
+    shape = geometry_engine.difference(
         shape,
-        [cylinder(tbcj_inner_diameter/2, tbcj_thickness + 0.1)]
+        [geometry_engine.cylinder(tbcj_inner_diameter/2, tbcj_thickness + 0.1)]
     )
 
     return shape
@@ -2152,15 +2166,15 @@ def tbcj_thumb_position_rotation():
 
 def tbcj_place(shape):
     loc = np.array([-15, -60, -12]) + thumborigin()
-    shape = translate(shape, loc)
-    shape = rotate(shape, (0, 0, 0))
+    shape = geometry_engine.translate(shape, loc)
+    shape = geometry_engine.rotate(shape, (0, 0, 0))
     return shape
 
 
 def tbcj_thumb(side="right"):
     t = tbcj_thumb_layout(single_plate(side=side))
     tb = tbcj_place(tbcj_holder())
-    return union([t, tb])
+    return geometry_engine.union([t, tb])
     # return add([t, tb])
 
 
@@ -2176,25 +2190,25 @@ def tbcj_thumbcaps():
 
 # TODO:  VERIFY THEY CAN BE DELETED.  THEY LOOK LIKE REPLICATES.
 # def thumb_post_tr():
-#     return translate(web_post(),
+#     return geometry_engine.translate(web_post(),
 #                      [(mount_width / 2) - post_adj, ((mount_height/2) + double_plate_height) - post_adj, 0]
 #                      )
 #
 #
 # def thumb_post_tl():
-#     return translate(web_post(),
+#     return geometry_engine.translate(web_post(),
 #                      [-(mount_width / 2) + post_adj, ((mount_height/2) + double_plate_height) - post_adj, 0]
 #                      )
 #
 #
 # def thumb_post_bl():
-#     return translate(web_post(),
+#     return geometry_engine.translate(web_post(),
 #                      [-(mount_width / 2) + post_adj, -((mount_height/2) + double_plate_height) + post_adj, 0]
 #                      )
 #
 #
 # def thumb_post_br():
-#     return translate(web_post(),
+#     return geometry_engine.translate(web_post(),
 #                      [(mount_width / 2) - post_adj, -((mount_height/2) + double_plate_height) + post_adj, 0]
 #                      )
 
@@ -2309,7 +2323,7 @@ def tbcj_thumb_connectors():
         )
     )
 
-    return union(hulls)
+    return geometry_engine.union(hulls)
     # return add(hulls)
 
 
@@ -2354,7 +2368,7 @@ def left_key_position(row, direction, low_corner=False, side='right'):
 def left_key_place(shape, row, direction, low_corner=False, side='right'):
     logging.debug("left_key_place()")
     pos = left_key_position(row, direction, low_corner=low_corner, side=side)
-    return translate(shape, pos)
+    return geometry_engine.translate(shape, pos)
 
 
 def wall_locate1(dx, dy):
@@ -2389,34 +2403,34 @@ def wall_brace(place1, dx1, dy1, post1, place2, dx2, dy2, post2, back=False, ske
 
     hulls.append(place1(post1))
     if not skeleton:
-        hulls.append(place1(translate(post1, wall_locate1(dx1, dy1))))
-        hulls.append(place1(translate(post1, wall_locate2(dx1, dy1))))
+        hulls.append(place1(geometry_engine.translate(post1, wall_locate1(dx1, dy1))))
+        hulls.append(place1(geometry_engine.translate(post1, wall_locate2(dx1, dy1))))
     if not skeleton or skel_bottom:
-        hulls.append(place1(translate(post1, wall_locate3(dx1, dy1, back))))
+        hulls.append(place1(geometry_engine.translate(post1, wall_locate3(dx1, dy1, back))))
 
     hulls.append(place2(post2))
     if not skeleton:
-        hulls.append(place2(translate(post2, wall_locate1(dx2, dy2))))
-        hulls.append(place2(translate(post2, wall_locate2(dx2, dy2))))
+        hulls.append(place2(geometry_engine.translate(post2, wall_locate1(dx2, dy2))))
+        hulls.append(place2(geometry_engine.translate(post2, wall_locate2(dx2, dy2))))
 
     if not skeleton or skel_bottom:
-        hulls.append(place2(translate(post2, wall_locate3(dx2, dy2, back))))
+        hulls.append(place2(geometry_engine.translate(post2, wall_locate3(dx2, dy2, back))))
 
-    shape1 = hull_from_shapes(hulls)
+    shape1 = geometry_engine.convex_hull(hulls)
 
     hulls = []
     if not skeleton:
-        hulls.append(place1(translate(post1, wall_locate2(dx1, dy1))))
+        hulls.append(place1(geometry_engine.translate(post1, wall_locate2(dx1, dy1))))
     if not skeleton or skel_bottom:
-        hulls.append(place1(translate(post1, wall_locate3(dx1, dy1, back))))
+        hulls.append(place1(geometry_engine.translate(post1, wall_locate3(dx1, dy1, back))))
     if not skeleton:
-        hulls.append(place2(translate(post2, wall_locate2(dx2, dy2))))
+        hulls.append(place2(geometry_engine.translate(post2, wall_locate2(dx2, dy2))))
     if not skeleton or skel_bottom:
-        hulls.append(place2(translate(post2, wall_locate3(dx2, dy2, back))))
+        hulls.append(place2(geometry_engine.translate(post2, wall_locate3(dx2, dy2, back))))
 
     if len(hulls) > 0:
         shape2 = bottom_hull(hulls)
-        shape1 = union([shape1, shape2])
+        shape1 = geometry_engine.union([shape1, shape2])
         #shape1 = add([shape1, shape2])
 
     return shape1
@@ -2443,31 +2457,31 @@ def back_wall(skeleton=False):
     logging.debug("back_wall()")
     x = 0
     shape = None
-    shape = union([shape, key_wall_brace(
+    shape = geometry_engine.union([shape, key_wall_brace(
         x, 0, 0, 1, web_post_tl(), x, 0, 0, 1, web_post_tr(), back=True,
     )])
     for i in range(ncols - 1):
         x = i + 1
-        shape = union([shape, key_wall_brace(
+        shape = geometry_engine.union([shape, key_wall_brace(
             x, 0, 0, 1, web_post_tl(), x, 0, 0, 1, web_post_tr(), back=True,
         )])
 
         skelly = skeleton and not x == 1
-        shape = union([shape, key_wall_brace(
+        shape = geometry_engine.union([shape, key_wall_brace(
             x, 0, 0, 1, web_post_tl(), x - 1, 0, 0, 1, web_post_tr(), back=True,
             skeleton=skelly, skel_bottom=True,
         )])
 
-    shape = union([shape, key_wall_brace(
+    shape = geometry_engine.union([shape, key_wall_brace(
         lastcol, 0, 0, 1, web_post_tr(), lastcol, 0, 1, 0, web_post_tr(), back=True,
         skeleton=skeleton, skel_bottom=True,
     )])
     if not skeleton:
-        shape = union([shape,
-                       key_wall_brace(
-                           lastcol, 0, 0, 1, web_post_tr(), lastcol, 0, 1, 0, web_post_tr()
-                       )
-                       ])
+        shape = geometry_engine.union([shape,
+                                       key_wall_brace(
+                                           lastcol, 0, 0, 1, web_post_tr(), lastcol, 0, 1, 0, web_post_tr()
+                                       )
+                                       ])
     return shape
 
 
@@ -2479,25 +2493,25 @@ def right_wall(skeleton=False):
 
     corner = cornerrow if reduced_outer_cols > 0 else lastrow
 
-    shape = union([shape, key_wall_brace(
+    shape = geometry_engine.union([shape, key_wall_brace(
         lastcol, y, 1, 0, web_post_tr(), lastcol, y, 1, 0, web_post_br(),
         skeleton=skeleton,
     )])
 
     for i in range(corner):
         y = i + 1
-        shape = union([shape, key_wall_brace(
+        shape = geometry_engine.union([shape, key_wall_brace(
             lastcol, y - 1, 1, 0, web_post_br(), lastcol, y, 1, 0, web_post_tr(),
             skeleton=skeleton,
         )])
 
-        shape = union([shape, key_wall_brace(
+        shape = geometry_engine.union([shape, key_wall_brace(
             lastcol, y, 1, 0, web_post_tr(), lastcol, y, 1, 0, web_post_br(),
             skeleton=skeleton,
         )])
         # STRANGE PARTIAL OFFSET
 
-    shape = union([
+    shape = geometry_engine.union([
         shape,
         key_wall_brace(
             lastcol, corner, 0, -1, web_post_br(), lastcol, corner, 1, 0, web_post_br(),
@@ -2510,12 +2524,12 @@ def right_wall(skeleton=False):
 
 def left_wall(side='right', skeleton=False):
     logging.debug("left_wall()")
-    shape = union([wall_brace(
+    shape = geometry_engine.union([wall_brace(
         (lambda sh: key_place(sh, 0, 0)), 0, 1, web_post_tl(),
         (lambda sh: left_key_place(sh, 0, 1, side=side)), 0, 1, web_post(),
     )])
 
-    shape = union([shape, wall_brace(
+    shape = geometry_engine.union([shape, wall_brace(
         (lambda sh: left_key_place(sh, 0, 1, side=side)), 0, 1, web_post(),
         (lambda sh: left_key_place(sh, 0, 1, side=side)), -1, 0, web_post(),
         skeleton=skeleton,
@@ -2531,16 +2545,16 @@ def left_wall(side='right', skeleton=False):
             (lambda sh: left_key_place(sh, y, -1, low_corner=low, side=side)), -1, 0, web_post(),
             skeleton=skeleton and (y < (corner)),
         )
-        shape = union([shape, temp_shape1])
+        shape = geometry_engine.union([shape, temp_shape1])
 
-        temp_shape2 = hull_from_shapes((
+        temp_shape2 = geometry_engine.convex_hull((
             key_place(web_post_tl(), 0, y),
             key_place(web_post_bl(), 0, y),
             left_key_place(web_post(), y, 1, side=side),
             left_key_place(web_post(), y, -1, low_corner=low, side=side),
         ))
 
-        shape = union([shape, temp_shape2])
+        shape = geometry_engine.union([shape, temp_shape2])
 
     for i in range(corner):
         y = i + 1
@@ -2550,16 +2564,16 @@ def left_wall(side='right', skeleton=False):
             (lambda sh: left_key_place(sh, y, 1, side=side)), -1, 0, web_post(),
             skeleton=skeleton and (y < (corner)),
         )
-        shape = union([shape, temp_shape1])
+        shape = geometry_engine.union([shape, temp_shape1])
 
-        temp_shape2 = hull_from_shapes((
+        temp_shape2 = geometry_engine.convex_hull((
             key_place(web_post_tl(), 0, y),
             key_place(web_post_bl(), 0, y - 1),
             left_key_place(web_post(), y, 1, side=side),
             left_key_place(web_post(), y - 1, -1, side=side),
         ))
 
-        shape = union([shape, temp_shape2])
+        shape = geometry_engine.union([shape, temp_shape2])
 
     return shape
 
@@ -2568,24 +2582,24 @@ def front_wall(skeleton=False):
     logging.debug("front_wall()")
     shape = None
 
-    # shape = union([shape,key_wall_brace(
+    # shape = geometry_engine.union([shape,key_wall_brace(
     #     3, lastrow, 0, -1, web_post_bl(), 3, lastrow, 0.5, -1, web_post_br()
     # )])
-    # shape = union([shape,key_wall_brace(
+    # shape = geometry_engine.union([shape,key_wall_brace(
     #     3, lastrow, 0.5, -1, web_post_br(), 4, cornerrow, .5, -1, web_post_bl()
     # )])
-    # shape = union([shape,key_wall_brace(
+    # shape = geometry_engine.union([shape,key_wall_brace(
     #     4, cornerrow, .5, -1, web_post_bl(), 4, cornerrow, 0, -1, web_post_br()
     # )])
 
     # for i in range(ncols - 5):
     #     x = i + 5
     #
-    #     shape = union([shape,key_wall_brace(
+    #     shape = geometry_engine.union([shape,key_wall_brace(
     #         x, cornerrow, 0, -1, web_post_bl(), x, cornerrow, 0, -1, web_post_br()
     #     )])
     #
-    #     shape = union([shape, key_wall_brace(
+    #     shape = geometry_engine.union([shape, key_wall_brace(
     #         x, cornerrow, 0, -1, web_post_bl(), x - 1, cornerrow, 0, -1, web_post_br()
     #     )])
 
@@ -2602,46 +2616,46 @@ def front_wall(skeleton=False):
         if x < (offset_col - 1):
             logging.debug("pre-offset")
             if x > 3:
-                shape = union([shape, key_wall_brace(
+                shape = geometry_engine.union([shape, key_wall_brace(
                     x-1, lastrow, 0, -1, web_post_br(), x, lastrow, 0, -1, web_post_bl()
                 )])
-            shape = union([shape, key_wall_brace(
+            shape = geometry_engine.union([shape, key_wall_brace(
                 x, lastrow, 0, -1, web_post_bl(), x, lastrow, 0, -1, web_post_br()
             )])
         elif x < (offset_col):
             logging.debug("offset setup")
             if x > 3:
-                shape = union([shape, key_wall_brace(
+                shape = geometry_engine.union([shape, key_wall_brace(
                     x-1, lastrow, 0, -1, web_post_br(), x, lastrow, 0, -1, web_post_bl()
                 )])
-            shape = union([shape, key_wall_brace(
+            shape = geometry_engine.union([shape, key_wall_brace(
                 x, lastrow, 0, -1, web_post_bl(), x, lastrow, 0.5, -1, web_post_br()
             )])
 
         elif x == (offset_col):
             logging.debug("offset")
-            shape = union([shape, key_wall_brace(
+            shape = geometry_engine.union([shape, key_wall_brace(
                 x - 1, lastrow, 0.5, -1, web_post_br(), x, cornerrow, .5, -1, web_post_bl()
             )])
-            shape = union([shape, key_wall_brace(
+            shape = geometry_engine.union([shape, key_wall_brace(
                 x, cornerrow, .5, -1, web_post_bl(), x, cornerrow, 0, -1, web_post_br()
             )])
 
         elif x == (offset_col + 1):
             logging.debug("offset completion")
-            shape = union([shape, key_wall_brace(
+            shape = geometry_engine.union([shape, key_wall_brace(
                 x, cornerrow, 0, -1, web_post_bl(), x - 1, cornerrow, 0, -1, web_post_br()
             )])
-            shape = union([shape, key_wall_brace(
+            shape = geometry_engine.union([shape, key_wall_brace(
                 x, cornerrow, 0, -1, web_post_bl(), x, cornerrow, 0, -1, web_post_br()
             )])
 
         else:
             logging.debug("post offset")
-            shape = union([shape, key_wall_brace(
+            shape = geometry_engine.union([shape, key_wall_brace(
                 x, cornerrow, 0, -1, web_post_bl(), x - 1, corner, 0, -1, web_post_br()
             )])
-            shape = union([shape, key_wall_brace(
+            shape = geometry_engine.union([shape, key_wall_brace(
                 x, cornerrow, 0, -1, web_post_bl(), x, corner, 0, -1, web_post_br()
             )])
 
@@ -2703,26 +2717,28 @@ def default_thumb_walls(skeleton=False):
     logging.debug("thumb_walls()")
     # thumb, walls
     if default_1U_cluster:
-        shape = union([wall_brace(default_thumb_mr_place, 0, -1, web_post_br(), default_thumb_tr_place, 0, -1, web_post_br())])
+        shape = geometry_engine.union([wall_brace(default_thumb_mr_place, 0, -1, web_post_br(), default_thumb_tr_place, 0, -1, web_post_br())])
     else:
-        shape = union([wall_brace(default_thumb_mr_place, 0, -1, web_post_br(), default_thumb_tr_place, 0, -1, thumb_post_br())])
-    shape = union([shape, wall_brace(default_thumb_mr_place, 0, -1, web_post_br(), default_thumb_mr_place, 0, -1, web_post_bl())])
-    shape = union([shape, wall_brace(default_thumb_br_place, 0, -1, web_post_br(), default_thumb_br_place, 0, -1, web_post_bl())])
-    shape = union([shape, wall_brace(default_thumb_ml_place, -0.3, 1, web_post_tr(), default_thumb_ml_place, 0, 1, web_post_tl())])
-    shape = union([shape, wall_brace(default_thumb_bl_place, 0, 1, web_post_tr(), default_thumb_bl_place, 0, 1, web_post_tl())])
-    shape = union([shape, wall_brace(default_thumb_br_place, -1, 0, web_post_tl(), default_thumb_br_place, -1, 0, web_post_bl())])
-    shape = union([shape, wall_brace(default_thumb_bl_place, -1, 0, web_post_tl(), default_thumb_bl_place, -1, 0, web_post_bl())])
+        shape = geometry_engine.union([wall_brace(default_thumb_mr_place, 0, -1, web_post_br(), default_thumb_tr_place, 0, -1, thumb_post_br())])
+    shape = geometry_engine.union([shape, wall_brace(default_thumb_mr_place, 0, -1, web_post_br(), default_thumb_mr_place, 0, -1, web_post_bl())])
+    shape = geometry_engine.union([shape, wall_brace(default_thumb_br_place, 0, -1, web_post_br(), default_thumb_br_place, 0, -1, web_post_bl())])
+    shape = geometry_engine.union([shape, wall_brace(default_thumb_ml_place, -0.3, 1, web_post_tr(), default_thumb_ml_place, 0, 1, web_post_tl())])
+    shape = geometry_engine.union([shape, wall_brace(default_thumb_bl_place, 0, 1, web_post_tr(), default_thumb_bl_place, 0, 1, web_post_tl())])
+    shape = geometry_engine.union([shape, wall_brace(default_thumb_br_place, -1, 0, web_post_tl(), default_thumb_br_place, -1, 0, web_post_bl())])
+    shape = geometry_engine.union([shape, wall_brace(default_thumb_bl_place, -1, 0, web_post_tl(), default_thumb_bl_place, -1, 0, web_post_bl())])
     # thumb, corners
-    shape = union([shape, wall_brace(default_thumb_br_place, -1, 0, web_post_bl(), default_thumb_br_place, 0, -1, web_post_bl())])
-    shape = union([shape, wall_brace(default_thumb_bl_place, -1, 0, web_post_tl(), default_thumb_bl_place, 0, 1, web_post_tl())])
+    shape = geometry_engine.union([shape, wall_brace(default_thumb_br_place, -1, 0, web_post_bl(), default_thumb_br_place, 0, -1, web_post_bl())])
+    shape = geometry_engine.union([shape, wall_brace(default_thumb_bl_place, -1, 0, web_post_tl(), default_thumb_bl_place, 0, 1, web_post_tl())])
     # thumb, tweeners
-    shape = union([shape, wall_brace(default_thumb_mr_place, 0, -1, web_post_bl(), default_thumb_br_place, 0, -1, web_post_br())])
-    shape = union([shape, wall_brace(default_thumb_ml_place, 0, 1, web_post_tl(), default_thumb_bl_place, 0, 1, web_post_tr())])
-    shape = union([shape, wall_brace(default_thumb_bl_place, -1, 0, web_post_bl(), default_thumb_br_place, -1, 0, web_post_tl())])
+    shape = geometry_engine.union([shape, wall_brace(default_thumb_mr_place, 0, -1, web_post_bl(), default_thumb_br_place, 0, -1, web_post_br())])
+    shape = geometry_engine.union([shape, wall_brace(default_thumb_ml_place, 0, 1, web_post_tl(), default_thumb_bl_place, 0, 1, web_post_tr())])
+    shape = geometry_engine.union([shape, wall_brace(default_thumb_bl_place, -1, 0, web_post_bl(), default_thumb_br_place, -1, 0, web_post_tl())])
     if default_1U_cluster:
-        shape = union([shape, wall_brace(default_thumb_tr_place, 0, -1, web_post_br(), (lambda sh: key_place(sh, 3, lastrow)), 0, -1, web_post_bl())])
+        shape = geometry_engine.union([shape, wall_brace(default_thumb_tr_place, 0, -1, web_post_br(),
+                                      (lambda sh: key_place(sh, 3, lastrow)), 0, -1, web_post_bl())])
     else:
-        shape = union([shape, wall_brace(default_thumb_tr_place, 0, -1, thumb_post_br(), (lambda sh: key_place(sh, 3, lastrow)), 0, -1, web_post_bl())])
+        shape = geometry_engine.union([shape, wall_brace(default_thumb_tr_place, 0, -1, thumb_post_br(),
+                                      (lambda sh: key_place(sh, 3, lastrow)), 0, -1, web_post_bl())])
 
     return shape
 
@@ -2731,51 +2747,53 @@ def default_thumb_connection(side='right', skeleton=False):
     logging.debug("thumb_connection()")
     # clunky bit on the top left thumb connection  (normal connectors don't work well)
     shape = None
-    shape = union([shape, bottom_hull(
+    shape = geometry_engine.union([shape, bottom_hull(
         [
-            left_key_place(translate(web_post(), wall_locate2(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-            left_key_place(translate(web_post(), wall_locate3(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-            default_thumb_ml_place(translate(web_post_tr(), wall_locate2(-0.3, 1))),
-            default_thumb_ml_place(translate(web_post_tr(), wall_locate3(-0.3, 1))),
+            left_key_place(geometry_engine.translate(web_post(), wall_locate2(-1, 0)), cornerrow, -1, low_corner=True, side=side),
+            left_key_place(geometry_engine.translate(web_post(), wall_locate3(-1, 0)), cornerrow, -1, low_corner=True, side=side),
+            default_thumb_ml_place(geometry_engine.translate(web_post_tr(), wall_locate2(-0.3, 1))),
+            default_thumb_ml_place(geometry_engine.translate(web_post_tr(), wall_locate3(-0.3, 1))),
         ]
     )])
 
-    shape = union([shape,
-                   hull_from_shapes(
-                       [
-                           left_key_place(translate(web_post(), wall_locate2(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-                           left_key_place(translate(web_post(), wall_locate3(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-                           default_thumb_ml_place(translate(web_post_tr(), wall_locate2(-0.3, 1))),
-                           default_thumb_ml_place(translate(web_post_tr(), wall_locate3(-0.3, 1))),
-                           default_thumb_tl_place(thumb_post_tl()),
-                       ]
-                   )
-                   ])  # )
+    shape = geometry_engine.union([shape,
+                                   geometry_engine.convex_hull(
+                                       [
+                                           left_key_place(geometry_engine.translate(web_post(), wall_locate2(-1, 0)),
+                                                          cornerrow, -1, low_corner=True, side=side),
+                                           left_key_place(geometry_engine.translate(web_post(), wall_locate3(-1, 0)),
+                                                          cornerrow, -1, low_corner=True, side=side),
+                                           default_thumb_ml_place(geometry_engine.translate(web_post_tr(), wall_locate2(-0.3, 1))),
+                                           default_thumb_ml_place(geometry_engine.translate(web_post_tr(), wall_locate3(-0.3, 1))),
+                                           default_thumb_tl_place(thumb_post_tl()),
+                                       ]
+                                   )
+                                   ])  # )
 
-    shape = union([shape, hull_from_shapes(
+    shape = geometry_engine.union([shape, geometry_engine.convex_hull(
         [
-            left_key_place(translate(web_post(), wall_locate1(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-            left_key_place(translate(web_post(), wall_locate2(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-            left_key_place(translate(web_post(), wall_locate3(-1, 0)), cornerrow, -1, low_corner=True, side=side),
+            left_key_place(geometry_engine.translate(web_post(), wall_locate1(-1, 0)), cornerrow, -1, low_corner=True, side=side),
+            left_key_place(geometry_engine.translate(web_post(), wall_locate2(-1, 0)), cornerrow, -1, low_corner=True, side=side),
+            left_key_place(geometry_engine.translate(web_post(), wall_locate3(-1, 0)), cornerrow, -1, low_corner=True, side=side),
             default_thumb_tl_place(thumb_post_tl()),
         ]
     )])
 
-    shape = union([shape, hull_from_shapes(
+    shape = geometry_engine.union([shape, geometry_engine.convex_hull(
         [
             left_key_place(web_post(), cornerrow, -1, low_corner=True, side=side),
-            left_key_place(translate(web_post(), wall_locate1(-1, 0)), cornerrow, -1, low_corner=True, side=side),
+            left_key_place(geometry_engine.translate(web_post(), wall_locate1(-1, 0)), cornerrow, -1, low_corner=True, side=side),
             key_place(web_post_bl(), 0, cornerrow),
             default_thumb_tl_place(thumb_post_tl()),
         ]
     )])
 
-    shape = union([shape, hull_from_shapes(
+    shape = geometry_engine.union([shape, geometry_engine.convex_hull(
         [
             default_thumb_ml_place(web_post_tr()),
-            default_thumb_ml_place(translate(web_post_tr(), wall_locate1(-0.3, 1))),
-            default_thumb_ml_place(translate(web_post_tr(), wall_locate2(-0.3, 1))),
-            default_thumb_ml_place(translate(web_post_tr(), wall_locate3(-0.3, 1))),
+            default_thumb_ml_place(geometry_engine.translate(web_post_tr(), wall_locate1(-0.3, 1))),
+            default_thumb_ml_place(geometry_engine.translate(web_post_tr(), wall_locate2(-0.3, 1))),
+            default_thumb_ml_place(geometry_engine.translate(web_post_tr(), wall_locate3(-0.3, 1))),
             default_thumb_tl_place(thumb_post_tl()),
         ]
     )])
@@ -2792,7 +2810,7 @@ def tbjs_thumb_connection(side='right', skeleton=False):
             [
                 key_place(web_post_bl(), 0, cornerrow),
                 left_key_place(web_post(), cornerrow, -1, side=side, low_corner=True),
-                # left_key_place(translate(web_post(), wall_locate1(-1, 0)), cornerrow, -1, low_corner=True),
+                # left_key_place(geometry_engine.translate(web_post(), wall_locate1(-1, 0)), cornerrow, -1, low_corner=True),
                 tbjs_place(tbjs_post_tl()),
             ]
         )
@@ -2822,7 +2840,7 @@ def tbjs_thumb_connection(side='right', skeleton=False):
             ]
         )
     )
-    shape = union(hulls)
+    shape = geometry_engine.union(hulls)
     return shape
 
 
@@ -2833,36 +2851,36 @@ def tbjs_thumb_walls(skeleton=False):
         tbjs_thumb_mr_place, .5, 1, tbjs_thumb_post_tr(),
         (lambda sh: key_place(sh, 3, lastrow)), 0, -1, web_post_bl(),
     )
-    shape = union([shape, wall_brace(
+    shape = geometry_engine.union([shape, wall_brace(
         tbjs_thumb_mr_place, .5, 1, tbjs_thumb_post_tr(),
         tbjs_thumb_br_place, 0, -1, tbjs_thumb_post_br(),
     )])
-    shape = union([shape, wall_brace(
+    shape = geometry_engine.union([shape, wall_brace(
         tbjs_thumb_br_place, 0, -1, tbjs_thumb_post_br(),
         tbjs_thumb_br_place, 0, -1, tbjs_thumb_post_bl(),
     )])
-    shape = union([shape, wall_brace(
+    shape = geometry_engine.union([shape, wall_brace(
         tbjs_thumb_br_place, 0, -1, tbjs_thumb_post_bl(),
         tbjs_thumb_bl_place, 0, -1, tbjs_thumb_post_br(),
     )])
-    shape = union([shape, wall_brace(
+    shape = geometry_engine.union([shape, wall_brace(
         tbjs_thumb_bl_place, 0, -1, tbjs_thumb_post_br(),
         tbjs_thumb_bl_place, -1, -1, tbjs_thumb_post_bl(),
     )])
 
-    shape = union([shape, wall_brace(
+    shape = geometry_engine.union([shape, wall_brace(
         tbjs_place, -1.5, 0, tbjs_post_tl(),
         (lambda sh: left_key_place(sh, cornerrow, -1, side=ball_side, low_corner=True)), -1, 0, web_post(),
     )])
-    shape = union([shape, wall_brace(
+    shape = geometry_engine.union([shape, wall_brace(
         tbjs_place, -1.5, 0, tbjs_post_tl(),
         tbjs_place, -1, 0, tbjs_post_l(),
     )])
-    shape = union([shape, wall_brace(
+    shape = geometry_engine.union([shape, wall_brace(
         tbjs_place, -1, 0, tbjs_post_l(),
         tbjs_thumb_bl_place, -1, 0, tbjs_thumb_post_tl(),
     )])
-    shape = union([shape, wall_brace(
+    shape = geometry_engine.union([shape, wall_brace(
         tbjs_thumb_bl_place, -1, 0, tbjs_thumb_post_tl(),
         tbjs_thumb_bl_place, -1, -1, tbjs_thumb_post_bl(),
     )])
@@ -2872,51 +2890,53 @@ def tbjs_thumb_walls(skeleton=False):
 
 def tbcj_thumb_connection(side='right', skeleton=False):
     # clunky bit on the top left thumb connection  (normal connectors don't work well)
-    shape = union([bottom_hull(
+    shape = geometry_engine.union([bottom_hull(
         [
-            left_key_place(translate(web_post(), wall_locate2(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-            left_key_place(translate(web_post(), wall_locate3(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-            default_thumb_ml_place(translate(web_post_tr(), wall_locate2(-0.3, 1))),
-            default_thumb_ml_place(translate(web_post_tr(), wall_locate3(-0.3, 1))),
+            left_key_place(geometry_engine.translate(web_post(), wall_locate2(-1, 0)), cornerrow, -1, low_corner=True, side=side),
+            left_key_place(geometry_engine.translate(web_post(), wall_locate3(-1, 0)), cornerrow, -1, low_corner=True, side=side),
+            default_thumb_ml_place(geometry_engine.translate(web_post_tr(), wall_locate2(-0.3, 1))),
+            default_thumb_ml_place(geometry_engine.translate(web_post_tr(), wall_locate3(-0.3, 1))),
         ]
     )])
 
-    shape = union([shape,
-                   hull_from_shapes(
-                       [
-                           left_key_place(translate(web_post(), wall_locate2(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-                           left_key_place(translate(web_post(), wall_locate3(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-                           default_thumb_ml_place(translate(web_post_tr(), wall_locate2(-0.3, 1))),
-                           default_thumb_ml_place(translate(web_post_tr(), wall_locate3(-0.3, 1))),
-                           default_thumb_tl_place(web_post_tl()),
-                       ]
-                   )
-                   ])  # )
+    shape = geometry_engine.union([shape,
+                                   geometry_engine.convex_hull(
+                                       [
+                                           left_key_place(geometry_engine.translate(web_post(), wall_locate2(-1, 0)),
+                                                          cornerrow, -1, low_corner=True, side=side),
+                                           left_key_place(geometry_engine.translate(web_post(), wall_locate3(-1, 0)),
+                                                          cornerrow, -1, low_corner=True, side=side),
+                                           default_thumb_ml_place(geometry_engine.translate(web_post_tr(), wall_locate2(-0.3, 1))),
+                                           default_thumb_ml_place(geometry_engine.translate(web_post_tr(), wall_locate3(-0.3, 1))),
+                                           default_thumb_tl_place(web_post_tl()),
+                                       ]
+                                   )
+                                   ])  # )
 
-    shape = union([shape, hull_from_shapes(
+    shape = geometry_engine.union([shape, geometry_engine.convex_hull(
         [
-            left_key_place(translate(web_post(), wall_locate1(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-            left_key_place(translate(web_post(), wall_locate2(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-            left_key_place(translate(web_post(), wall_locate3(-1, 0)), cornerrow, -1, low_corner=True, side=side),
+            left_key_place(geometry_engine.translate(web_post(), wall_locate1(-1, 0)), cornerrow, -1, low_corner=True, side=side),
+            left_key_place(geometry_engine.translate(web_post(), wall_locate2(-1, 0)), cornerrow, -1, low_corner=True, side=side),
+            left_key_place(geometry_engine.translate(web_post(), wall_locate3(-1, 0)), cornerrow, -1, low_corner=True, side=side),
             default_thumb_tl_place(web_post_tl()),
         ]
     )])
 
-    shape = union([shape, hull_from_shapes(
+    shape = geometry_engine.union([shape, geometry_engine.convex_hull(
         [
             left_key_place(web_post(), cornerrow, -1, low_corner=True, side=side),
-            left_key_place(translate(web_post(), wall_locate1(-1, 0)), cornerrow, -1, low_corner=True, side=side),
+            left_key_place(geometry_engine.translate(web_post(), wall_locate1(-1, 0)), cornerrow, -1, low_corner=True, side=side),
             key_place(web_post_bl(), 0, cornerrow),
             default_thumb_tl_place(web_post_tl()),
         ]
     )])
 
-    shape = union([shape, hull_from_shapes(
+    shape = geometry_engine.union([shape, geometry_engine.convex_hull(
         [
             default_thumb_ml_place(web_post_tr()),
-            default_thumb_ml_place(translate(web_post_tr(), wall_locate1(-0.3, 1))),
-            default_thumb_ml_place(translate(web_post_tr(), wall_locate2(-0.3, 1))),
-            default_thumb_ml_place(translate(web_post_tr(), wall_locate3(-0.3, 1))),
+            default_thumb_ml_place(geometry_engine.translate(web_post_tr(), wall_locate1(-0.3, 1))),
+            default_thumb_ml_place(geometry_engine.translate(web_post_tr(), wall_locate2(-0.3, 1))),
+            default_thumb_ml_place(geometry_engine.translate(web_post_tr(), wall_locate3(-0.3, 1))),
             default_thumb_tl_place(web_post_tl()),
         ]
     )])
@@ -2925,13 +2945,13 @@ def tbcj_thumb_connection(side='right', skeleton=False):
 
 
 def tbcj_thumb_walls(skeleton=False):
-    shape = union([wall_brace(tbcj_thumb_ml_place, -0.3, 1, web_post_tr(), tbcj_thumb_ml_place, 0, 1, web_post_tl())])
-    shape = union([shape, wall_brace(tbcj_thumb_bl_place, 0, 1, web_post_tr(), tbcj_thumb_bl_place, 0, 1, web_post_tl())])
-    shape = union([shape, wall_brace(tbcj_thumb_bl_place, -1, 0, web_post_tl(), tbcj_thumb_bl_place, -1, 0, web_post_bl())])
-    shape = union([shape, wall_brace(tbcj_thumb_bl_place, -1, 0, web_post_tl(), tbcj_thumb_bl_place, 0, 1, web_post_tl())])
-    shape = union([shape, wall_brace(tbcj_thumb_ml_place, 0, 1, web_post_tl(), tbcj_thumb_bl_place, 0, 1, web_post_tr())])
+    shape = geometry_engine.union([wall_brace(tbcj_thumb_ml_place, -0.3, 1, web_post_tr(), tbcj_thumb_ml_place, 0, 1, web_post_tl())])
+    shape = geometry_engine.union([shape, wall_brace(tbcj_thumb_bl_place, 0, 1, web_post_tr(), tbcj_thumb_bl_place, 0, 1, web_post_tl())])
+    shape = geometry_engine.union([shape, wall_brace(tbcj_thumb_bl_place, -1, 0, web_post_tl(), tbcj_thumb_bl_place, -1, 0, web_post_bl())])
+    shape = geometry_engine.union([shape, wall_brace(tbcj_thumb_bl_place, -1, 0, web_post_tl(), tbcj_thumb_bl_place, 0, 1, web_post_tl())])
+    shape = geometry_engine.union([shape, wall_brace(tbcj_thumb_ml_place, 0, 1, web_post_tl(), tbcj_thumb_bl_place, 0, 1, web_post_tr())])
 
-    corner = box(1, 1, tbcj_thickness)
+    corner = geometry_engine.box(1, 1, tbcj_thickness)
 
     points = [
         (tbcj_thumb_bl_place, -1, 0, web_post_bl()),
@@ -2946,83 +2966,90 @@ def tbcj_thumb_walls(skeleton=False):
         (pa, dxa, dya, sa) = points[i]
         (pb, dxb, dyb, sb) = points[i + 1]
 
-        shape = union([shape, wall_brace(pa, dxa, dya, sa, pb, dxb, dyb, sb)])
+        shape = geometry_engine.union([shape, wall_brace(pa, dxa, dya, sa, pb, dxb, dyb, sb)])
 
     return shape
 
 
 def mini_thumb_walls(skeleton=False):
     # thumb, walls
-    shape = union([wall_brace(mini_thumb_mr_place, 0, -1, web_post_br(), mini_thumb_tr_place, 0, -1, mini_thumb_post_br())])
-    shape = union([shape, wall_brace(mini_thumb_mr_place, 0, -1, web_post_br(), mini_thumb_mr_place, 0, -1, web_post_bl())])
-    shape = union([shape, wall_brace(mini_thumb_br_place, 0, -1, web_post_br(), mini_thumb_br_place, 0, -1, web_post_bl())])
-    shape = union([shape, wall_brace(mini_thumb_bl_place, 0, 1, web_post_tr(), mini_thumb_bl_place, 0, 1, web_post_tl())])
-    shape = union([shape, wall_brace(mini_thumb_br_place, -1, 0, web_post_tl(), mini_thumb_br_place, -1, 0, web_post_bl())])
-    shape = union([shape, wall_brace(mini_thumb_bl_place, -1, 0, web_post_tl(), mini_thumb_bl_place, -1, 0, web_post_bl())])
+    shape = geometry_engine.union([wall_brace(mini_thumb_mr_place, 0, -1, web_post_br(), mini_thumb_tr_place, 0, -1, mini_thumb_post_br())])
+    shape = geometry_engine.union([shape, wall_brace(mini_thumb_mr_place, 0, -1, web_post_br(), mini_thumb_mr_place, 0, -1, web_post_bl())])
+    shape = geometry_engine.union([shape, wall_brace(mini_thumb_br_place, 0, -1, web_post_br(), mini_thumb_br_place, 0, -1, web_post_bl())])
+    shape = geometry_engine.union([shape, wall_brace(mini_thumb_bl_place, 0, 1, web_post_tr(), mini_thumb_bl_place, 0, 1, web_post_tl())])
+    shape = geometry_engine.union([shape, wall_brace(mini_thumb_br_place, -1, 0, web_post_tl(), mini_thumb_br_place, -1, 0, web_post_bl())])
+    shape = geometry_engine.union([shape, wall_brace(mini_thumb_bl_place, -1, 0, web_post_tl(), mini_thumb_bl_place, -1, 0, web_post_bl())])
     # thumb, corners
-    shape = union([shape, wall_brace(mini_thumb_br_place, -1, 0, web_post_bl(), mini_thumb_br_place, 0, -1, web_post_bl())])
-    shape = union([shape, wall_brace(mini_thumb_bl_place, -1, 0, web_post_tl(), mini_thumb_bl_place, 0, 1, web_post_tl())])
+    shape = geometry_engine.union([shape, wall_brace(mini_thumb_br_place, -1, 0, web_post_bl(), mini_thumb_br_place, 0, -1, web_post_bl())])
+    shape = geometry_engine.union([shape, wall_brace(mini_thumb_bl_place, -1, 0, web_post_tl(), mini_thumb_bl_place, 0, 1, web_post_tl())])
     # thumb, tweeners
-    shape = union([shape, wall_brace(mini_thumb_mr_place, 0, -1, web_post_bl(), mini_thumb_br_place, 0, -1, web_post_br())])
-    shape = union([shape, wall_brace(mini_thumb_bl_place, -1, 0, web_post_bl(), mini_thumb_br_place, -1, 0, web_post_tl())])
-    shape = union([shape, wall_brace(mini_thumb_tr_place, 0, -1, mini_thumb_post_br(), (lambda sh: key_place(sh, 3, lastrow)), 0, -1, web_post_bl())])
+    shape = geometry_engine.union([shape, wall_brace(mini_thumb_mr_place, 0, -1, web_post_bl(), mini_thumb_br_place, 0, -1, web_post_br())])
+    shape = geometry_engine.union([shape, wall_brace(mini_thumb_bl_place, -1, 0, web_post_bl(), mini_thumb_br_place, -1, 0, web_post_tl())])
+    shape = geometry_engine.union([shape, wall_brace(mini_thumb_tr_place, 0, -1, mini_thumb_post_br(),
+                                  (lambda sh: key_place(sh, 3, lastrow)), 0, -1, web_post_bl())])
 
     return shape
 
 
 def mini_thumb_connection(side='right', skeleton=False):
     # clunky bit on the top left thumb connection  (normal connectors don't work well)
-    shape = union([bottom_hull(
+    shape = geometry_engine.union([bottom_hull(
         [
-            left_key_place(translate(web_post(), wall_locate2(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-            left_key_place(translate(web_post(), wall_locate3(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-            mini_thumb_bl_place(translate(web_post_tr(), wall_locate2(-0.3, 1))),
-            mini_thumb_bl_place(translate(web_post_tr(), wall_locate3(-0.3, 1))),
+            left_key_place(geometry_engine.translate(web_post(), wall_locate2(-1, 0)), cornerrow, -1, low_corner=True, side=side),
+            left_key_place(geometry_engine.translate(web_post(), wall_locate3(-1, 0)), cornerrow, -1, low_corner=True, side=side),
+            mini_thumb_bl_place(geometry_engine.translate(web_post_tr(), wall_locate2(-0.3, 1))),
+            mini_thumb_bl_place(geometry_engine.translate(web_post_tr(), wall_locate3(-0.3, 1))),
         ]
     )])
 
-    shape = union([shape,
-                   hull_from_shapes(
-                       [
-                           left_key_place(translate(web_post(), wall_locate2(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-                           left_key_place(translate(web_post(), wall_locate3(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-                           mini_thumb_bl_place(translate(web_post_tr(), wall_locate2(-0.3, 1))),
-                           mini_thumb_bl_place(translate(web_post_tr(), wall_locate3(-0.3, 1))),
-                           mini_thumb_tl_place(web_post_tl()),
-                       ]
-                   )])
+    shape = geometry_engine.union([shape,
+                                   geometry_engine.convex_hull(
+                                       [
+                                           left_key_place(geometry_engine.translate(web_post(), wall_locate2(-1, 0)),
+                                                          cornerrow, -1, low_corner=True, side=side),
+                                           left_key_place(geometry_engine.translate(web_post(), wall_locate3(-1, 0)),
+                                                          cornerrow, -1, low_corner=True, side=side),
+                                           mini_thumb_bl_place(geometry_engine.translate(web_post_tr(), wall_locate2(-0.3, 1))),
+                                           mini_thumb_bl_place(geometry_engine.translate(web_post_tr(), wall_locate3(-0.3, 1))),
+                                           mini_thumb_tl_place(web_post_tl()),
+                                       ]
+                                   )])
 
-    shape = union([shape,
-                   hull_from_shapes(
-                       [
-                           left_key_place(web_post(), cornerrow, -1, low_corner=True, side=side),
-                           left_key_place(translate(web_post(), wall_locate1(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-                           left_key_place(translate(web_post(), wall_locate2(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-                           left_key_place(translate(web_post(), wall_locate3(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-                           mini_thumb_tl_place(web_post_tl()),
-                       ]
-                   )])
+    shape = geometry_engine.union([shape,
+                                   geometry_engine.convex_hull(
+                                       [
+                                           left_key_place(web_post(), cornerrow, -1, low_corner=True, side=side),
+                                           left_key_place(geometry_engine.translate(web_post(), wall_locate1(-1, 0)),
+                                                          cornerrow, -1, low_corner=True, side=side),
+                                           left_key_place(geometry_engine.translate(web_post(), wall_locate2(-1, 0)),
+                                                          cornerrow, -1, low_corner=True, side=side),
+                                           left_key_place(geometry_engine.translate(web_post(), wall_locate3(-1, 0)),
+                                                          cornerrow, -1, low_corner=True, side=side),
+                                           mini_thumb_tl_place(web_post_tl()),
+                                       ]
+                                   )])
 
-    shape = union([shape,
-                   hull_from_shapes(
-                       [
-                           left_key_place(web_post(), cornerrow, -1, low_corner=True, side=side),
-                           left_key_place(translate(web_post(), wall_locate1(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-                           key_place(web_post_bl(), 0, cornerrow),
-                           mini_thumb_tl_place(web_post_tl()),
-                       ]
-                   )])
+    shape = geometry_engine.union([shape,
+                                   geometry_engine.convex_hull(
+                                       [
+                                           left_key_place(web_post(), cornerrow, -1, low_corner=True, side=side),
+                                           left_key_place(geometry_engine.translate(web_post(), wall_locate1(-1, 0)),
+                                                          cornerrow, -1, low_corner=True, side=side),
+                                           key_place(web_post_bl(), 0, cornerrow),
+                                           mini_thumb_tl_place(web_post_tl()),
+                                       ]
+                                   )])
 
-    shape = union([shape,
-                   hull_from_shapes(
-                       [
-                           mini_thumb_bl_place(web_post_tr()),
-                           mini_thumb_bl_place(translate(web_post_tr(), wall_locate1(-0.3, 1))),
-                           mini_thumb_bl_place(translate(web_post_tr(), wall_locate2(-0.3, 1))),
-                           mini_thumb_bl_place(translate(web_post_tr(), wall_locate3(-0.3, 1))),
-                           mini_thumb_tl_place(web_post_tl()),
-                       ]
-                   )])
+    shape = geometry_engine.union([shape,
+                                   geometry_engine.convex_hull(
+                                       [
+                                           mini_thumb_bl_place(web_post_tr()),
+                                           mini_thumb_bl_place(geometry_engine.translate(web_post_tr(), wall_locate1(-0.3, 1))),
+                                           mini_thumb_bl_place(geometry_engine.translate(web_post_tr(), wall_locate2(-0.3, 1))),
+                                           mini_thumb_bl_place(geometry_engine.translate(web_post_tr(), wall_locate3(-0.3, 1))),
+                                           mini_thumb_tl_place(web_post_tl()),
+                                       ]
+                                   )])
 
     return shape
 
@@ -3030,94 +3057,110 @@ def mini_thumb_connection(side='right', skeleton=False):
 def minidox_thumb_walls(skeleton=False):
 
     # thumb, walls
-    shape = union([wall_brace(minidox_thumb_tr_place, 0, -1, minidox_thumb_post_br(), minidox_thumb_tr_place, 0, -1, minidox_thumb_post_bl())])
-    shape = union([shape, wall_brace(minidox_thumb_tr_place, 0, -1, minidox_thumb_post_bl(), minidox_thumb_tl_place, 0, -1, minidox_thumb_post_br())])
-    shape = union([shape, wall_brace(minidox_thumb_tl_place, 0, -1, minidox_thumb_post_br(), minidox_thumb_tl_place, 0, -1, minidox_thumb_post_bl())])
-    shape = union([shape, wall_brace(minidox_thumb_tl_place, 0, -1, minidox_thumb_post_bl(), minidox_thumb_ml_place, -1, -1, minidox_thumb_post_br())])
-    shape = union([shape, wall_brace(minidox_thumb_ml_place, -1, -1, minidox_thumb_post_br(), minidox_thumb_ml_place, 0, -1, minidox_thumb_post_bl())])
-    shape = union([shape, wall_brace(minidox_thumb_ml_place, 0, -1, minidox_thumb_post_bl(), minidox_thumb_ml_place, -1, 0, minidox_thumb_post_bl())])
+    shape = geometry_engine.union([wall_brace(minidox_thumb_tr_place, 0, -1, minidox_thumb_post_br(), minidox_thumb_tr_place, 0, -1, minidox_thumb_post_bl())])
+    shape = geometry_engine.union([shape, wall_brace(minidox_thumb_tr_place, 0, -1, minidox_thumb_post_bl(),
+                                  minidox_thumb_tl_place, 0, -1, minidox_thumb_post_br())])
+    shape = geometry_engine.union([shape, wall_brace(minidox_thumb_tl_place, 0, -1, minidox_thumb_post_br(),
+                                  minidox_thumb_tl_place, 0, -1, minidox_thumb_post_bl())])
+    shape = geometry_engine.union([shape, wall_brace(minidox_thumb_tl_place, 0, -1, minidox_thumb_post_bl(),
+                                  minidox_thumb_ml_place, -1, -1, minidox_thumb_post_br())])
+    shape = geometry_engine.union([shape, wall_brace(minidox_thumb_ml_place, -1, -1, minidox_thumb_post_br(),
+                                  minidox_thumb_ml_place, 0, -1, minidox_thumb_post_bl())])
+    shape = geometry_engine.union([shape, wall_brace(minidox_thumb_ml_place, 0, -1, minidox_thumb_post_bl(),
+                                  minidox_thumb_ml_place, -1, 0, minidox_thumb_post_bl())])
     # thumb, corners
-    shape = union([shape, wall_brace(minidox_thumb_ml_place, -1, 0, minidox_thumb_post_bl(), minidox_thumb_ml_place, -1, 0, minidox_thumb_post_tl())])
-    shape = union([shape, wall_brace(minidox_thumb_ml_place, -1, 0, minidox_thumb_post_tl(), minidox_thumb_ml_place, 0, 1, minidox_thumb_post_tl())])
+    shape = geometry_engine.union([shape, wall_brace(minidox_thumb_ml_place, -1, 0, minidox_thumb_post_bl(),
+                                  minidox_thumb_ml_place, -1, 0, minidox_thumb_post_tl())])
+    shape = geometry_engine.union([shape, wall_brace(minidox_thumb_ml_place, -1, 0, minidox_thumb_post_tl(),
+                                  minidox_thumb_ml_place, 0, 1, minidox_thumb_post_tl())])
     # thumb, tweeners
-    shape = union([shape, wall_brace(minidox_thumb_ml_place, 0, 1, minidox_thumb_post_tr(), minidox_thumb_ml_place, 0, 1, minidox_thumb_post_tl())])
-    shape = union([shape, wall_brace(minidox_thumb_tr_place, 0, -1, minidox_thumb_post_br(), (lambda sh: key_place(sh, 3, lastrow)), 0, -1, web_post_bl())])
+    shape = geometry_engine.union([shape, wall_brace(minidox_thumb_ml_place, 0, 1, minidox_thumb_post_tr(),
+                                  minidox_thumb_ml_place, 0, 1, minidox_thumb_post_tl())])
+    shape = geometry_engine.union([shape, wall_brace(minidox_thumb_tr_place, 0, -1, minidox_thumb_post_br(),
+                                  (lambda sh: key_place(sh, 3, lastrow)), 0, -1, web_post_bl())])
 
     return shape
 
 
 def minidox_thumb_connection(side='right', skeleton=False):
     # clunky bit on the top left thumb connection  (normal connectors don't work well)
-    shape = union([bottom_hull(
+    shape = geometry_engine.union([bottom_hull(
         [
-            left_key_place(translate(web_post(), wall_locate2(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-            left_key_place(translate(web_post(), wall_locate3(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-            minidox_thumb_ml_place(translate(minidox_thumb_post_tr(), wall_locate2(-0.3, 1))),
-            minidox_thumb_ml_place(translate(minidox_thumb_post_tr(), wall_locate3(-0.3, 1))),
+            left_key_place(geometry_engine.translate(web_post(), wall_locate2(-1, 0)), cornerrow, -1, low_corner=True, side=side),
+            left_key_place(geometry_engine.translate(web_post(), wall_locate3(-1, 0)), cornerrow, -1, low_corner=True, side=side),
+            minidox_thumb_ml_place(geometry_engine.translate(minidox_thumb_post_tr(), wall_locate2(-0.3, 1))),
+            minidox_thumb_ml_place(geometry_engine.translate(minidox_thumb_post_tr(), wall_locate3(-0.3, 1))),
         ]
     )])
 
-    shape = union([shape,
-                   hull_from_shapes(
-                       [
-                           left_key_place(translate(web_post(), wall_locate2(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-                           left_key_place(translate(web_post(), wall_locate3(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-                           minidox_thumb_ml_place(translate(minidox_thumb_post_tr(), wall_locate2(-0.3, 1))),
-                           minidox_thumb_ml_place(translate(minidox_thumb_post_tr(), wall_locate3(-0.3, 1))),
-                           minidox_thumb_tl_place(minidox_thumb_post_tl()),
-                       ]
-                   )])
+    shape = geometry_engine.union([shape,
+                                   geometry_engine.convex_hull(
+                                       [
+                                           left_key_place(geometry_engine.translate(web_post(), wall_locate2(-1, 0)),
+                                                          cornerrow, -1, low_corner=True, side=side),
+                                           left_key_place(geometry_engine.translate(web_post(), wall_locate3(-1, 0)),
+                                                          cornerrow, -1, low_corner=True, side=side),
+                                           minidox_thumb_ml_place(geometry_engine.translate(minidox_thumb_post_tr(), wall_locate2(-0.3, 1))),
+                                           minidox_thumb_ml_place(geometry_engine.translate(minidox_thumb_post_tr(), wall_locate3(-0.3, 1))),
+                                           minidox_thumb_tl_place(minidox_thumb_post_tl()),
+                                       ]
+                                   )])
 
-    shape = union([shape,
-                   hull_from_shapes(
-                       [
-                           left_key_place(web_post(), cornerrow, -1, low_corner=True, side=side),
-                           left_key_place(translate(web_post(), wall_locate1(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-                           left_key_place(translate(web_post(), wall_locate2(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-                           left_key_place(translate(web_post(), wall_locate3(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-                           minidox_thumb_tl_place(minidox_thumb_post_tl()),
-                       ]
-                   )])
+    shape = geometry_engine.union([shape,
+                                   geometry_engine.convex_hull(
+                                       [
+                                           left_key_place(web_post(), cornerrow, -1, low_corner=True, side=side),
+                                           left_key_place(geometry_engine.translate(web_post(), wall_locate1(-1, 0)),
+                                                          cornerrow, -1, low_corner=True, side=side),
+                                           left_key_place(geometry_engine.translate(web_post(), wall_locate2(-1, 0)),
+                                                          cornerrow, -1, low_corner=True, side=side),
+                                           left_key_place(geometry_engine.translate(web_post(), wall_locate3(-1, 0)),
+                                                          cornerrow, -1, low_corner=True, side=side),
+                                           minidox_thumb_tl_place(minidox_thumb_post_tl()),
+                                       ]
+                                   )])
 
-    shape = union([shape,
-                   hull_from_shapes(
-                       [
-                           left_key_place(web_post(), cornerrow, -1, low_corner=True, side=side),
-                           left_key_place(translate(web_post(), wall_locate1(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-                           key_place(web_post_bl(), 0, cornerrow),
-                           minidox_thumb_tl_place(minidox_thumb_post_tl()),
-                       ]
-                   )])
+    shape = geometry_engine.union([shape,
+                                   geometry_engine.convex_hull(
+                                       [
+                                           left_key_place(web_post(), cornerrow, -1, low_corner=True, side=side),
+                                           left_key_place(geometry_engine.translate(web_post(), wall_locate1(-1, 0)),
+                                                          cornerrow, -1, low_corner=True, side=side),
+                                           key_place(web_post_bl(), 0, cornerrow),
+                                           minidox_thumb_tl_place(minidox_thumb_post_tl()),
+                                       ]
+                                   )])
 
-    shape = union([shape,
-                   hull_from_shapes(
-                       [
-                           minidox_thumb_ml_place(minidox_thumb_post_tr()),
-                           minidox_thumb_ml_place(translate(minidox_thumb_post_tr(), wall_locate1(0, 1))),
-                           minidox_thumb_ml_place(translate(minidox_thumb_post_tr(), wall_locate2(0, 1))),
-                           minidox_thumb_ml_place(translate(minidox_thumb_post_tr(), wall_locate3(0, 1))),
-                           minidox_thumb_tl_place(minidox_thumb_post_tl()),
-                       ]
-                   )])
+    shape = geometry_engine.union([shape,
+                                   geometry_engine.convex_hull(
+                                       [
+                                           minidox_thumb_ml_place(minidox_thumb_post_tr()),
+                                           minidox_thumb_ml_place(geometry_engine.translate(minidox_thumb_post_tr(), wall_locate1(0, 1))),
+                                           minidox_thumb_ml_place(geometry_engine.translate(minidox_thumb_post_tr(), wall_locate2(0, 1))),
+                                           minidox_thumb_ml_place(geometry_engine.translate(minidox_thumb_post_tr(), wall_locate3(0, 1))),
+                                           minidox_thumb_tl_place(minidox_thumb_post_tl()),
+                                       ]
+                                   )])
 
     return shape
 
 
 def carbonfet_thumb_walls(skeleton=False):
     # thumb, walls
-    shape = union([wall_brace(carbonfet_thumb_mr_place, 0, -1, web_post_br(), carbonfet_thumb_tr_place, 0, -1, web_post_br())])
-    shape = union([shape, wall_brace(carbonfet_thumb_mr_place, 0, -1, web_post_br(), carbonfet_thumb_mr_place, 0, -1.15, web_post_bl())])
-    shape = union([shape, wall_brace(carbonfet_thumb_br_place, 0, -1, web_post_br(), carbonfet_thumb_br_place, 0, -1, web_post_bl())])
-    shape = union([shape, wall_brace(carbonfet_thumb_bl_place, -.3, 1, thumb_post_tr(), carbonfet_thumb_bl_place, 0, 1, thumb_post_tl())])
-    shape = union([shape, wall_brace(carbonfet_thumb_br_place, -1, 0, web_post_tl(), carbonfet_thumb_br_place, -1, 0, web_post_bl())])
-    shape = union([shape, wall_brace(carbonfet_thumb_bl_place, -1, 0, thumb_post_tl(), carbonfet_thumb_bl_place, -1, 0, web_post_bl())])
+    shape = geometry_engine.union([wall_brace(carbonfet_thumb_mr_place, 0, -1, web_post_br(), carbonfet_thumb_tr_place, 0, -1, web_post_br())])
+    shape = geometry_engine.union([shape, wall_brace(carbonfet_thumb_mr_place, 0, -1, web_post_br(), carbonfet_thumb_mr_place, 0, -1.15, web_post_bl())])
+    shape = geometry_engine.union([shape, wall_brace(carbonfet_thumb_br_place, 0, -1, web_post_br(), carbonfet_thumb_br_place, 0, -1, web_post_bl())])
+    shape = geometry_engine.union([shape, wall_brace(carbonfet_thumb_bl_place, -.3, 1, thumb_post_tr(), carbonfet_thumb_bl_place, 0, 1, thumb_post_tl())])
+    shape = geometry_engine.union([shape, wall_brace(carbonfet_thumb_br_place, -1, 0, web_post_tl(), carbonfet_thumb_br_place, -1, 0, web_post_bl())])
+    shape = geometry_engine.union([shape, wall_brace(carbonfet_thumb_bl_place, -1, 0, thumb_post_tl(), carbonfet_thumb_bl_place, -1, 0, web_post_bl())])
     # thumb, corners
-    shape = union([shape, wall_brace(carbonfet_thumb_br_place, -1, 0, web_post_bl(), carbonfet_thumb_br_place, 0, -1, web_post_bl())])
-    shape = union([shape, wall_brace(carbonfet_thumb_bl_place, -1, 0, thumb_post_tl(), carbonfet_thumb_bl_place, 0, 1, thumb_post_tl())])
+    shape = geometry_engine.union([shape, wall_brace(carbonfet_thumb_br_place, -1, 0, web_post_bl(), carbonfet_thumb_br_place, 0, -1, web_post_bl())])
+    shape = geometry_engine.union([shape, wall_brace(carbonfet_thumb_bl_place, -1, 0, thumb_post_tl(), carbonfet_thumb_bl_place, 0, 1, thumb_post_tl())])
     # thumb, tweeners
-    shape = union([shape, wall_brace(carbonfet_thumb_mr_place, 0, -1.15, web_post_bl(), carbonfet_thumb_br_place, 0, -1, web_post_br())])
-    shape = union([shape, wall_brace(carbonfet_thumb_bl_place, -1, 0, web_post_bl(), carbonfet_thumb_br_place, -1, 0, web_post_tl())])
-    shape = union([shape, wall_brace(carbonfet_thumb_tr_place, 0, -1, web_post_br(), (lambda sh: key_place(sh, 3, lastrow)), 0, -1, web_post_bl())])
+    shape = geometry_engine.union([shape, wall_brace(carbonfet_thumb_mr_place, 0, -1.15, web_post_bl(), carbonfet_thumb_br_place, 0, -1, web_post_br())])
+    shape = geometry_engine.union([shape, wall_brace(carbonfet_thumb_bl_place, -1, 0, web_post_bl(), carbonfet_thumb_br_place, -1, 0, web_post_tl())])
+    shape = geometry_engine.union([shape, wall_brace(carbonfet_thumb_tr_place, 0, -1, web_post_br(),
+                                  (lambda sh: key_place(sh, 3, lastrow)), 0, -1, web_post_bl())])
     return shape
 
 
@@ -3125,55 +3168,61 @@ def carbonfet_thumb_connection(side='right', skeleton=False):
     # clunky bit on the top left thumb connection  (normal connectors don't work well)
     shape = bottom_hull(
         [
-            left_key_place(translate(web_post(), wall_locate2(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-            left_key_place(translate(web_post(), wall_locate3(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-            carbonfet_thumb_bl_place(translate(thumb_post_tr(), wall_locate2(-0.3, 1))),
-            carbonfet_thumb_bl_place(translate(thumb_post_tr(), wall_locate3(-0.3, 1))),
+            left_key_place(geometry_engine.translate(web_post(), wall_locate2(-1, 0)), cornerrow, -1, low_corner=True, side=side),
+            left_key_place(geometry_engine.translate(web_post(), wall_locate3(-1, 0)), cornerrow, -1, low_corner=True, side=side),
+            carbonfet_thumb_bl_place(geometry_engine.translate(thumb_post_tr(), wall_locate2(-0.3, 1))),
+            carbonfet_thumb_bl_place(geometry_engine.translate(thumb_post_tr(), wall_locate3(-0.3, 1))),
         ]
     )
 
-    shape = union([shape,
-                   hull_from_shapes(
-                       [
-                           left_key_place(translate(web_post(), wall_locate2(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-                           left_key_place(translate(web_post(), wall_locate3(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-                           carbonfet_thumb_bl_place(translate(thumb_post_tr(), wall_locate2(-0.3, 1))),
-                           carbonfet_thumb_bl_place(translate(thumb_post_tr(), wall_locate3(-0.3, 1))),
-                           carbonfet_thumb_ml_place(thumb_post_tl()),
-                       ]
-                   )])
+    shape = geometry_engine.union([shape,
+                                   geometry_engine.convex_hull(
+                                       [
+                                           left_key_place(geometry_engine.translate(web_post(), wall_locate2(-1, 0)),
+                                                          cornerrow, -1, low_corner=True, side=side),
+                                           left_key_place(geometry_engine.translate(web_post(), wall_locate3(-1, 0)),
+                                                          cornerrow, -1, low_corner=True, side=side),
+                                           carbonfet_thumb_bl_place(geometry_engine.translate(thumb_post_tr(), wall_locate2(-0.3, 1))),
+                                           carbonfet_thumb_bl_place(geometry_engine.translate(thumb_post_tr(), wall_locate3(-0.3, 1))),
+                                           carbonfet_thumb_ml_place(thumb_post_tl()),
+                                       ]
+                                   )])
 
-    shape = union([shape,
-                   hull_from_shapes(
-                       [
-                           left_key_place(web_post(), cornerrow, -1, low_corner=True, side=side),
-                           left_key_place(translate(web_post(), wall_locate1(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-                           left_key_place(translate(web_post(), wall_locate2(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-                           left_key_place(translate(web_post(), wall_locate3(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-                           carbonfet_thumb_ml_place(thumb_post_tl()),
-                       ]
-                   )])
+    shape = geometry_engine.union([shape,
+                                   geometry_engine.convex_hull(
+                                       [
+                                           left_key_place(web_post(), cornerrow, -1, low_corner=True, side=side),
+                                           left_key_place(geometry_engine.translate(web_post(), wall_locate1(-1, 0)),
+                                                          cornerrow, -1, low_corner=True, side=side),
+                                           left_key_place(geometry_engine.translate(web_post(), wall_locate2(-1, 0)),
+                                                          cornerrow, -1, low_corner=True, side=side),
+                                           left_key_place(geometry_engine.translate(web_post(), wall_locate3(-1, 0)),
+                                                          cornerrow, -1, low_corner=True, side=side),
+                                           carbonfet_thumb_ml_place(thumb_post_tl()),
+                                       ]
+                                   )])
 
-    shape = union([shape,
-                   hull_from_shapes(
-                       [
-                           left_key_place(web_post(), cornerrow, -1, low_corner=True, side=side),
-                           left_key_place(translate(web_post(), wall_locate1(-1, 0)), cornerrow, -1, low_corner=True, side=side),
-                           key_place(web_post_bl(), 0, cornerrow),
-                           carbonfet_thumb_ml_place(thumb_post_tl()),
-                       ]
-                   )])
+    shape = geometry_engine.union([shape,
+                                   geometry_engine.convex_hull(
+                                       [
+                                           left_key_place(web_post(), cornerrow, -1, low_corner=True, side=side),
+                                           left_key_place(geometry_engine.translate(web_post(), wall_locate1(-1, 0)),
+                                                          cornerrow, -1, low_corner=True, side=side),
+                                           key_place(web_post_bl(), 0, cornerrow),
+                                           carbonfet_thumb_ml_place(thumb_post_tl()),
+                                       ]
+                                   )])
 
-    shape = union([shape,
-                   hull_from_shapes(
-                       [
-                           carbonfet_thumb_bl_place(thumb_post_tr()),
-                           carbonfet_thumb_bl_place(translate(thumb_post_tr(), wall_locate1(-0.3, 1))),
-                           carbonfet_thumb_bl_place(translate(thumb_post_tr(), wall_locate2(-0.3, 1))),
-                           carbonfet_thumb_bl_place(translate(thumb_post_tr(), wall_locate3(-0.3, 1))),
-                           carbonfet_thumb_ml_place(thumb_post_tl()),
-                       ]
-                   )])
+    shape = geometry_engine.union([shape,
+                                   geometry_engine.convex_hull(
+                                       [
+                                           carbonfet_thumb_bl_place(thumb_post_tr()),
+                                           carbonfet_thumb_bl_place(geometry_engine.translate(thumb_post_tr(), wall_locate1(-0.3, 1))),
+                                           carbonfet_thumb_bl_place(geometry_engine.translate(thumb_post_tr(), wall_locate2(-0.3, 1))),
+                                           carbonfet_thumb_bl_place(geometry_engine.translate(thumb_post_tr(), wall_locate3(-0.3, 1))),
+                                           carbonfet_thumb_ml_place(thumb_post_tl()),
+                                       ]
+                                   )])
 
     return shape
 
@@ -3181,7 +3230,7 @@ def carbonfet_thumb_connection(side='right', skeleton=False):
 def case_walls(side='right', skeleton=False):
     logging.debug("case_walls()")
     return (
-        union([
+        geometry_engine.union([
             back_wall(skeleton=skeleton),
             left_wall(side=side, skeleton=skeleton),
             right_wall(skeleton=skeleton),
@@ -3208,21 +3257,22 @@ rj9_position = (rj9_start[0], rj9_start[1], 11)
 
 def rj9_cube():
     logging.debug("rj9_cube()")
-    shape = box(14.78, 13, 22.38)
+    shape = geometry_engine.box(14.78, 13, 22.38)
 
     return shape
 
 
 def rj9_space():
     logging.debug("rj9_space()")
-    return translate(rj9_cube(), rj9_position)
+    return geometry_engine.translate(rj9_cube(), rj9_position)
 
 
 def rj9_holder():
     logging.debug("rj9_holder()")
-    shape = union([translate(box(10.78, 9, 18.38), (0, 2, 0)), translate(box(10.78, 13, 5), (0, 0, 5))])
-    shape = difference(rj9_cube(), [shape])
-    shape = translate(shape, rj9_position)
+    shape = geometry_engine.union([geometry_engine.translate(geometry_engine.box(10.78, 9, 18.38), (0, 2, 0)),
+                                  geometry_engine.translate(geometry_engine.box(10.78, 13, 5), (0, 0, 5))])
+    shape = geometry_engine.difference(rj9_cube(), [shape])
+    shape = geometry_engine.translate(shape, rj9_position)
 
     return shape
 
@@ -3236,31 +3286,31 @@ usb_holder_thickness = 4
 
 def usb_holder():
     logging.debug("usb_holder()")
-    shape = box(
+    shape = geometry_engine.box(
         usb_holder_size[0] + usb_holder_thickness,
         usb_holder_size[1],
         usb_holder_size[2] + usb_holder_thickness,
     )
-    shape = translate(shape,
-                      (
-                          usb_holder_position[0],
-                          usb_holder_position[1],
-                          (usb_holder_size[2] + usb_holder_thickness) / 2,
-                      )
-                      )
+    shape = geometry_engine.translate(shape,
+                                      (
+                                          usb_holder_position[0],
+                                          usb_holder_position[1],
+                                          (usb_holder_size[2] + usb_holder_thickness) / 2,
+                                      )
+                                      )
     return shape
 
 
 def usb_holder_hole():
     logging.debug("usb_holder_hole()")
-    shape = box(*usb_holder_size)
-    shape = translate(shape,
-                      (
-                          usb_holder_position[0],
-                          usb_holder_position[1],
-                          (usb_holder_size[2] + usb_holder_thickness) / 2,
-                      )
-                      )
+    shape = geometry_engine.box(*usb_holder_size)
+    shape = geometry_engine.translate(shape,
+                                      (
+                                          usb_holder_position[0],
+                                          usb_holder_position[1],
+                                          (usb_holder_size[2] + usb_holder_thickness) / 2,
+                                      )
+                                      )
     return shape
 
 
@@ -3279,17 +3329,17 @@ external_start = list(
 
 def external_mount_hole():
     logging.debug("external_mount_hole()")
-    shape = box(external_holder_width, 20.0, external_holder_height+.1)
-    undercut = box(external_holder_width+8, 10.0, external_holder_height+8+.1)
-    shape = union([shape, translate(undercut, (0, -5, 0))])
+    shape = geometry_engine.box(external_holder_width, 20.0, external_holder_height+.1)
+    undercut = geometry_engine.box(external_holder_width+8, 10.0, external_holder_height+8+.1)
+    shape = geometry_engine.union([shape, geometry_engine.translate(undercut, (0, -5, 0))])
 
-    shape = translate(shape,
-                      (
-                          external_start[0] + external_holder_xoffset,
-                          external_start[1] + external_holder_yoffset,
-                          external_holder_height / 2-.05,
-                      )
-                      )
+    shape = geometry_engine.translate(shape,
+                                      (
+                                          external_start[0] + external_holder_xoffset,
+                                          external_start[1] + external_holder_yoffset,
+                                          external_holder_height / 2-.05,
+                                      )
+                                      )
     return shape
 
 
@@ -3310,14 +3360,14 @@ def pcb_usb_hole():
     pcb_usb_position[1] = pcb_usb_position[1] + pcb_usb_hole_offset[1]
     pcb_usb_position[2] = pcb_usb_position[2] + pcb_usb_hole_offset[2]
 
-    shape = box(*pcb_usb_hole_size)
-    shape = translate(shape,
-                      (
-                          pcb_usb_position[0],
-                          pcb_usb_position[1],
-                          pcb_usb_hole_size[2] / 2 + usb_holder_thickness,
-                      )
-                      )
+    shape = geometry_engine.box(*pcb_usb_hole_size)
+    shape = geometry_engine.translate(shape,
+                                      (
+                                          pcb_usb_position[0],
+                                          pcb_usb_position[1],
+                                          pcb_usb_hole_size[2] / 2 + usb_holder_thickness,
+                                      )
+                                      )
     return shape
 
 
@@ -3330,27 +3380,27 @@ pcb_holder_thickness = pcb_holder_size[2]
 
 def pcb_holder():
     logging.debug("pcb_holder()")
-    shape = box(*pcb_holder_size)
-    shape = translate(shape,
-                      (
-                          pcb_holder_position[0],
-                          pcb_holder_position[1] - pcb_holder_size[1] / 2,
-                          pcb_holder_thickness / 2,
-                      )
-                      )
+    shape = geometry_engine.box(*pcb_holder_size)
+    shape = geometry_engine.translate(shape,
+                                      (
+                                          pcb_holder_position[0],
+                                          pcb_holder_position[1] - pcb_holder_size[1] / 2,
+                                          pcb_holder_thickness / 2,
+                                      )
+                                      )
     return shape
 
 
 def wall_thinner():
     logging.debug("wall_thinner()")
-    shape = box(*wall_thinner_size)
-    shape = translate(shape,
-                      (
-                          pcb_holder_position[0],
-                          pcb_holder_position[1] - wall_thinner_size[1]/2,
-                          wall_thinner_size[2]/2 + pcb_holder_thickness,
-                      )
-                      )
+    shape = geometry_engine.box(*wall_thinner_size)
+    shape = geometry_engine.translate(shape,
+                                      (
+                                          pcb_holder_position[0],
+                                          pcb_holder_position[1] - wall_thinner_size[1]/2,
+                                          wall_thinner_size[2]/2 + pcb_holder_thickness,
+                                      )
+                                      )
     return shape
 
 
@@ -3363,15 +3413,15 @@ def trrs_hole():
 
     trrs_hole_size = [3, 20]
 
-    shape = cylinder(*trrs_hole_size)
-    shape = rotate(shape, [0, 90, 90])
-    shape = translate(shape,
-                      (
-                          trrs_position[0],
-                          trrs_position[1],
-                          trrs_hole_size[0] + pcb_holder_thickness,
-                      )
-                      )
+    shape = geometry_engine.cylinder(*trrs_hole_size)
+    shape = geometry_engine.rotate(shape, [0, 90, 90])
+    shape = geometry_engine.translate(shape,
+                                      (
+                                          trrs_position[0],
+                                          trrs_position[1],
+                                          trrs_hole_size[0] + pcb_holder_thickness,
+                                      )
+                                      )
     return shape
 
 
@@ -3382,11 +3432,11 @@ pcb_screw_position[1] = pcb_screw_position[1] + pcb_screw_y_offset
 def pcb_screw_hole():
     logging.debug("pcb_screw_hole()")
     holes = []
-    hole = cylinder(*pcb_screw_hole_size)
-    hole = translate(hole, pcb_screw_position)
-    hole = translate(hole, (0, 0, pcb_screw_hole_size[1]/2-.1))
+    hole = geometry_engine.cylinder(*pcb_screw_hole_size)
+    hole = geometry_engine.translate(hole, pcb_screw_position)
+    hole = geometry_engine.translate(hole, (0, 0, pcb_screw_hole_size[1]/2-.1))
     for offset in pcb_screw_x_offsets:
-        holes.append(translate(hole, (offset, 0, 0)))
+        holes.append(geometry_engine.translate(hole, (offset, 0, 0)))
 
     return holes
 
@@ -3413,40 +3463,40 @@ if oled_center_row is not None:
 
 def generate_trackball(pos, rot):
     precut = trackball_cutout()
-    precut = rotate(precut, tb_socket_rotation_offset)
-    precut = translate(precut, tb_socket_translation_offset)
-    precut = rotate(precut, rot)
-    precut = translate(precut, pos)
+    precut = geometry_engine.rotate(precut, tb_socket_rotation_offset)
+    precut = geometry_engine.translate(precut, tb_socket_translation_offset)
+    precut = geometry_engine.rotate(precut, rot)
+    precut = geometry_engine.translate(precut, pos)
 
     shape, cutout, sensor = trackball_socket()
 
-    shape = rotate(shape, tb_socket_rotation_offset)
-    shape = translate(shape, tb_socket_translation_offset)
-    shape = rotate(shape, rot)
-    shape = translate(shape, pos)
+    shape = geometry_engine.rotate(shape, tb_socket_rotation_offset)
+    shape = geometry_engine.translate(shape, tb_socket_translation_offset)
+    shape = geometry_engine.rotate(shape, rot)
+    shape = geometry_engine.translate(shape, pos)
 
-    cutout = rotate(cutout, tb_socket_rotation_offset)
-    cutout = translate(cutout, tb_socket_translation_offset)
-    # cutout = rotate(cutout, tb_sensor_translation_offset)
-    # cutout = translate(cutout, tb_sensor_rotation_offset)
-    cutout = rotate(cutout, rot)
-    cutout = translate(cutout, pos)
+    cutout = geometry_engine.rotate(cutout, tb_socket_rotation_offset)
+    cutout = geometry_engine.translate(cutout, tb_socket_translation_offset)
+    # cutout = geometry_engine.rotate(cutout, tb_sensor_translation_offset)
+    # cutout = geometry_engine.translate(cutout, tb_sensor_rotation_offset)
+    cutout = geometry_engine.rotate(cutout, rot)
+    cutout = geometry_engine.translate(cutout, pos)
 
     # Small adjustment due to line to line surface / minute numerical error issues
-    # Creates small overlap to assist engines in union function later
-    sensor = rotate(sensor, tb_socket_rotation_offset)
-    sensor = translate(sensor, tb_socket_translation_offset)
-    # sensor = rotate(sensor, tb_sensor_translation_offset)
-    # sensor = translate(sensor, tb_sensor_rotation_offset)
-    sensor = translate(sensor, (0, 0, .001))
-    sensor = rotate(sensor, rot)
-    sensor = translate(sensor, pos)
+    # Creates small overlap to assist engines in geometry_engine.union function later
+    sensor = geometry_engine.rotate(sensor, tb_socket_rotation_offset)
+    sensor = geometry_engine.translate(sensor, tb_socket_translation_offset)
+    # sensor = geometry_engine.rotate(sensor, tb_sensor_translation_offset)
+    # sensor = geometry_engine.translate(sensor, tb_sensor_rotation_offset)
+    sensor = geometry_engine.translate(sensor, (0, 0, .001))
+    sensor = geometry_engine.rotate(sensor, rot)
+    sensor = geometry_engine.translate(sensor, pos)
 
     ball = trackball_ball()
-    ball = rotate(ball, tb_socket_rotation_offset)
-    ball = translate(ball, tb_socket_translation_offset)
-    ball = rotate(ball, rot)
-    ball = translate(ball, pos)
+    ball = geometry_engine.rotate(ball, tb_socket_rotation_offset)
+    ball = geometry_engine.translate(ball, tb_socket_translation_offset)
+    ball = geometry_engine.rotate(ball, rot)
+    ball = geometry_engine.translate(ball, pos)
 
     # return precut, shape, cutout, ball
     return precut, shape, cutout, sensor, ball
@@ -3548,22 +3598,22 @@ def oled_sliding_mount_frame(side='right'):
     top_hole_start = -mount_ext_height / 2.0 + oled_mount_rim + oled_edge_overlap_end + oled_edge_overlap_connector
     top_hole_length = oled_mount_height
 
-    hole = box(mount_ext_width, mount_ext_up_height, oled_mount_cut_depth + .01)
-    hole = translate(hole, (0., top_hole_start + top_hole_length / 2, 0.))
+    hole = geometry_engine.box(mount_ext_width, mount_ext_up_height, oled_mount_cut_depth + .01)
+    hole = geometry_engine.translate(hole, (0., top_hole_start + top_hole_length / 2, 0.))
 
-    hole_down = box(mount_ext_width, mount_ext_height, oled_mount_depth + oled_mount_cut_depth / 2)
-    hole_down = translate(hole_down, (0., 0., -oled_mount_cut_depth / 4))
-    hole = union([hole, hole_down])
+    hole_down = geometry_engine.box(mount_ext_width, mount_ext_height, oled_mount_depth + oled_mount_cut_depth / 2)
+    hole_down = geometry_engine.translate(hole_down, (0., 0., -oled_mount_cut_depth / 4))
+    hole = geometry_engine.union([hole, hole_down])
 
-    shape = box(mount_ext_width, mount_ext_height, oled_mount_depth)
+    shape = geometry_engine.box(mount_ext_width, mount_ext_height, oled_mount_depth)
 
     conn_hole_start = -mount_ext_height / 2.0 + oled_mount_rim
     conn_hole_length = (
         oled_edge_overlap_end + oled_edge_overlap_connector
         + oled_edge_overlap_clearance + oled_thickness
     )
-    conn_hole = box(oled_mount_width, conn_hole_length + .01, oled_mount_depth)
-    conn_hole = translate(conn_hole, (
+    conn_hole = geometry_engine.box(oled_mount_width, conn_hole_length + .01, oled_mount_depth)
+    conn_hole = geometry_engine.translate(conn_hole, (
         0,
         conn_hole_start + conn_hole_length / 2,
         -oled_edge_overlap_thickness
@@ -3573,8 +3623,8 @@ def oled_sliding_mount_frame(side='right'):
         oled_edge_overlap_end + oled_edge_overlap_clearance
     )
     end_hole_start = mount_ext_height / 2.0 - oled_mount_rim - end_hole_length
-    end_hole = box(oled_mount_width, end_hole_length + .01, oled_mount_depth)
-    end_hole = translate(end_hole, (
+    end_hole = geometry_engine.box(oled_mount_width, end_hole_length + .01, oled_mount_depth)
+    end_hole = geometry_engine.translate(end_hole, (
         0,
         end_hole_start + end_hole_length / 2,
         -oled_edge_overlap_thickness
@@ -3582,56 +3632,56 @@ def oled_sliding_mount_frame(side='right'):
 
     top_hole_start = -mount_ext_height / 2.0 + oled_mount_rim + oled_edge_overlap_end + oled_edge_overlap_connector
     top_hole_length = oled_mount_height
-    top_hole = box(oled_mount_width, top_hole_length, oled_edge_overlap_thickness + oled_thickness - oled_edge_chamfer)
-    top_hole = translate(top_hole, (
+    top_hole = geometry_engine.box(oled_mount_width, top_hole_length, oled_edge_overlap_thickness + oled_thickness - oled_edge_chamfer)
+    top_hole = geometry_engine.translate(top_hole, (
         0,
         top_hole_start + top_hole_length / 2,
         (oled_mount_depth - oled_edge_overlap_thickness - oled_thickness - oled_edge_chamfer) / 2.0
     ))
 
-    top_chamfer_1 = box(
+    top_chamfer_1 = geometry_engine.box(
         oled_mount_width,
         top_hole_length,
         0.01
     )
-    top_chamfer_2 = box(
+    top_chamfer_2 = geometry_engine.box(
         oled_mount_width + 2 * oled_edge_chamfer,
         top_hole_length + 2 * oled_edge_chamfer,
         0.01
     )
-    top_chamfer_1 = translate(top_chamfer_1, (0, 0, -oled_edge_chamfer - .05))
+    top_chamfer_1 = geometry_engine.translate(top_chamfer_1, (0, 0, -oled_edge_chamfer - .05))
 
-    top_chamfer_1 = hull_from_shapes([top_chamfer_1, top_chamfer_2])
+    top_chamfer_1 = geometry_engine.convex_hull([top_chamfer_1, top_chamfer_2])
 
-    top_chamfer_1 = translate(top_chamfer_1, (
+    top_chamfer_1 = geometry_engine.translate(top_chamfer_1, (
         0,
         top_hole_start + top_hole_length / 2,
         oled_mount_depth / 2.0 + .05
     ))
 
-    top_hole = union([top_hole, top_chamfer_1])
+    top_hole = geometry_engine.union([top_hole, top_chamfer_1])
 
-    shape = difference(shape, [conn_hole, top_hole, end_hole])
+    shape = geometry_engine.difference(shape, [conn_hole, top_hole, end_hole])
 
     oled_mount_location_xyz, oled_mount_rotation_xyz = oled_position_rotation(side=side)
 
-    shape = rotate(shape, oled_mount_rotation_xyz)
-    shape = translate(shape,
-                      (
-                          oled_mount_location_xyz[0],
-                          oled_mount_location_xyz[1],
-                          oled_mount_location_xyz[2],
-                      )
-                      )
+    shape = geometry_engine.rotate(shape, oled_mount_rotation_xyz)
+    shape = geometry_engine.translate(shape,
+                                      (
+                                          oled_mount_location_xyz[0],
+                                          oled_mount_location_xyz[1],
+                                          oled_mount_location_xyz[2],
+                                      )
+                                      )
 
-    hole = rotate(hole, oled_mount_rotation_xyz)
-    hole = translate(hole,
-                     (
-                         oled_mount_location_xyz[0],
-                         oled_mount_location_xyz[1],
-                         oled_mount_location_xyz[2],
-                     )
-                     )
+    hole = geometry_engine.rotate(hole, oled_mount_rotation_xyz)
+    hole = geometry_engine.translate(hole,
+                                     (
+                                         oled_mount_location_xyz[0],
+                                         oled_mount_location_xyz[1],
+                                         oled_mount_location_xyz[2],
+                                     )
+                                     )
     return hole, shape
 
 
@@ -3641,55 +3691,55 @@ def oled_clip_mount_frame(side='right'):
         oled_mount_height + 2 * oled_clip_thickness
         + 2 * oled_clip_undercut + 2 * oled_clip_overhang + 2 * oled_mount_rim
     )
-    hole = box(mount_ext_width, mount_ext_height, oled_mount_cut_depth + .01)
+    hole = geometry_engine.box(mount_ext_width, mount_ext_height, oled_mount_cut_depth + .01)
 
-    shape = box(mount_ext_width, mount_ext_height, oled_mount_depth)
-    shape = difference(shape, [box(oled_mount_width, oled_mount_height, oled_mount_depth + .1)])
+    shape = geometry_engine.box(mount_ext_width, mount_ext_height, oled_mount_depth)
+    shape = geometry_engine.difference(shape, [geometry_engine.box(oled_mount_width, oled_mount_height, oled_mount_depth + .1)])
 
-    clip_slot = box(
+    clip_slot = geometry_engine.box(
         oled_clip_width + 2 * oled_clip_width_clearance,
         oled_mount_height + 2 * oled_clip_thickness + 2 * oled_clip_overhang,
         oled_mount_depth + .1
     )
 
-    shape = difference(shape, [clip_slot])
+    shape = geometry_engine.difference(shape, [clip_slot])
 
-    clip_undercut = box(
+    clip_undercut = geometry_engine.box(
         oled_clip_width + 2 * oled_clip_width_clearance,
         oled_mount_height + 2 * oled_clip_thickness + 2 * oled_clip_overhang + 2 * oled_clip_undercut,
         oled_mount_depth + .1
     )
 
-    clip_undercut = translate(clip_undercut, (0., 0., oled_clip_undercut_thickness))
-    shape = difference(shape, [clip_undercut])
+    clip_undercut = geometry_engine.translate(clip_undercut, (0., 0., oled_clip_undercut_thickness))
+    shape = geometry_engine.difference(shape, [clip_undercut])
 
-    plate = box(
+    plate = geometry_engine.box(
         oled_mount_width + .1,
         oled_mount_height - 2 * oled_mount_connector_hole,
         oled_mount_depth - oled_thickness
     )
-    plate = translate(plate, (0., 0., -oled_thickness / 2.0))
-    shape = union([shape, plate])
+    plate = geometry_engine.translate(plate, (0., 0., -oled_thickness / 2.0))
+    shape = geometry_engine.union([shape, plate])
 
     oled_mount_location_xyz, oled_mount_rotation_xyz = oled_position_rotation(side=side)
 
-    shape = rotate(shape, oled_mount_rotation_xyz)
-    shape = translate(shape,
-                      (
-                          oled_mount_location_xyz[0],
-                          oled_mount_location_xyz[1],
-                          oled_mount_location_xyz[2],
-                      )
-                      )
+    shape = geometry_engine.rotate(shape, oled_mount_rotation_xyz)
+    shape = geometry_engine.translate(shape,
+                                      (
+                                          oled_mount_location_xyz[0],
+                                          oled_mount_location_xyz[1],
+                                          oled_mount_location_xyz[2],
+                                      )
+                                      )
 
-    hole = rotate(hole, oled_mount_rotation_xyz)
-    hole = translate(hole,
-                     (
-                         oled_mount_location_xyz[0],
-                         oled_mount_location_xyz[1],
-                         oled_mount_location_xyz[2],
-                     )
-                     )
+    hole = geometry_engine.rotate(hole, oled_mount_rotation_xyz)
+    hole = geometry_engine.translate(hole,
+                                     (
+                                         oled_mount_location_xyz[0],
+                                         oled_mount_location_xyz[1],
+                                         oled_mount_location_xyz[2],
+                                     )
+                                     )
 
     return hole, shape
 
@@ -3703,58 +3753,58 @@ def oled_clip():
 
     oled_leg_depth = oled_mount_depth + oled_clip_z_gap
 
-    shape = box(mount_ext_width - .1, mount_ext_height - .1, oled_mount_bezel_thickness)
-    shape = translate(shape, (0., 0., oled_mount_bezel_thickness / 2.))
+    shape = geometry_engine.box(mount_ext_width - .1, mount_ext_height - .1, oled_mount_bezel_thickness)
+    shape = geometry_engine.translate(shape, (0., 0., oled_mount_bezel_thickness / 2.))
 
-    hole_1 = box(
+    hole_1 = geometry_engine.box(
         oled_screen_width + 2 * oled_mount_bezel_chamfer,
         oled_screen_length + 2 * oled_mount_bezel_chamfer,
         .01
     )
-    hole_2 = box(oled_screen_width, oled_screen_length, 2.05 * oled_mount_bezel_thickness)
-    hole = hull_from_shapes([hole_1, hole_2])
+    hole_2 = geometry_engine.box(oled_screen_width, oled_screen_length, 2.05 * oled_mount_bezel_thickness)
+    hole = geometry_engine.convex_hull([hole_1, hole_2])
 
-    shape = difference(shape, [translate(hole, (0., 0., oled_mount_bezel_thickness))])
+    shape = geometry_engine.difference(shape, [geometry_engine.translate(hole, (0., 0., oled_mount_bezel_thickness))])
 
-    clip_leg = box(oled_clip_width, oled_clip_thickness, oled_leg_depth)
-    clip_leg = translate(clip_leg, (
+    clip_leg = geometry_engine.box(oled_clip_width, oled_clip_thickness, oled_leg_depth)
+    clip_leg = geometry_engine.translate(clip_leg, (
         0.,
         0.,
         # (oled_mount_height+2*oled_clip_overhang+oled_clip_thickness)/2,
         -oled_leg_depth / 2.
     ))
 
-    latch_1 = box(
+    latch_1 = geometry_engine.box(
         oled_clip_width,
         oled_clip_overhang + oled_clip_thickness,
         .01
     )
-    latch_2 = box(
+    latch_2 = geometry_engine.box(
         oled_clip_width,
         oled_clip_thickness / 2,
         oled_clip_extension
     )
-    latch_2 = translate(latch_2, (
+    latch_2 = geometry_engine.translate(latch_2, (
         0.,
         -(-oled_clip_thickness / 2 + oled_clip_thickness + oled_clip_overhang) / 2,
         -oled_clip_extension / 2
     ))
-    latch = hull_from_shapes([latch_1, latch_2])
-    latch = translate(latch, (
+    latch = geometry_engine.convex_hull([latch_1, latch_2])
+    latch = geometry_engine.translate(latch, (
         0.,
         oled_clip_overhang / 2,
         -oled_leg_depth
     ))
 
-    clip_leg = union([clip_leg, latch])
+    clip_leg = geometry_engine.union([clip_leg, latch])
 
-    clip_leg = translate(clip_leg, (
+    clip_leg = geometry_engine.translate(clip_leg, (
         0.,
         (oled_mount_height + 2 * oled_clip_overhang + oled_clip_thickness) / 2 - oled_clip_y_gap,
         0.
     ))
 
-    shape = union([shape, clip_leg, mirror(clip_leg, 'XZ')])
+    shape = geometry_engine.union([shape, clip_leg, geometry_engine.mirror(clip_leg, 'XZ')])
 
     return shape
 
@@ -3762,29 +3812,29 @@ def oled_clip():
 def oled_undercut_mount_frame(side='right'):
     mount_ext_width = oled_mount_width + 2 * oled_mount_rim
     mount_ext_height = oled_mount_height + 2 * oled_mount_rim
-    hole = box(mount_ext_width, mount_ext_height, oled_mount_cut_depth + .01)
+    hole = geometry_engine.box(mount_ext_width, mount_ext_height, oled_mount_cut_depth + .01)
 
-    shape = box(mount_ext_width, mount_ext_height, oled_mount_depth)
-    shape = difference(shape, [box(oled_mount_width, oled_mount_height, oled_mount_depth + .1)])
-    undercut = box(
+    shape = geometry_engine.box(mount_ext_width, mount_ext_height, oled_mount_depth)
+    shape = geometry_engine.difference(shape, [geometry_engine.box(oled_mount_width, oled_mount_height, oled_mount_depth + .1)])
+    undercut = geometry_engine.box(
         oled_mount_width + 2 * oled_mount_undercut,
         oled_mount_height + 2 * oled_mount_undercut,
         oled_mount_depth)
-    undercut = translate(undercut, (0., 0., -oled_mount_undercut_thickness))
-    shape = difference(shape, [undercut])
+    undercut = geometry_engine.translate(undercut, (0., 0., -oled_mount_undercut_thickness))
+    shape = geometry_engine.difference(shape, [undercut])
 
     oled_mount_location_xyz, oled_mount_rotation_xyz = oled_position_rotation(side=side)
 
-    shape = rotate(shape, oled_mount_rotation_xyz)
-    shape = translate(shape, (
+    shape = geometry_engine.rotate(shape, oled_mount_rotation_xyz)
+    shape = geometry_engine.translate(shape, (
         oled_mount_location_xyz[0],
         oled_mount_location_xyz[1],
         oled_mount_location_xyz[2],
     )
     )
 
-    hole = rotate(hole, oled_mount_rotation_xyz)
-    hole = translate(hole, (
+    hole = geometry_engine.rotate(hole, oled_mount_rotation_xyz)
+    hole = geometry_engine.translate(hole, (
         oled_mount_location_xyz[0],
         oled_mount_location_xyz[1],
         oled_mount_location_xyz[2],
@@ -3802,39 +3852,39 @@ def teensy_holder():
     teensy_holder_offset = -teensy_holder_length / 2
     teensy_holder_top_offset = (teensy_holder_top_length / 2) - teensy_holder_length
 
-    s1 = box(3, teensy_holder_length, 6 + teensy_width)
-    s1 = translate(s1, [1.5, teensy_holder_offset, 0])
+    s1 = geometry_engine.box(3, teensy_holder_length, 6 + teensy_width)
+    s1 = geometry_engine.translate(s1, [1.5, teensy_holder_offset, 0])
 
-    s2 = box(teensy_pcb_thickness, teensy_holder_length, 3)
-    s2 = translate(s2,
-                   (
-                       (teensy_pcb_thickness / 2) + 3,
-                       teensy_holder_offset,
-                       -1.5 - (teensy_width / 2),
-                   )
-                   )
+    s2 = geometry_engine.box(teensy_pcb_thickness, teensy_holder_length, 3)
+    s2 = geometry_engine.translate(s2,
+                                   (
+                                       (teensy_pcb_thickness / 2) + 3,
+                                       teensy_holder_offset,
+                                       -1.5 - (teensy_width / 2),
+                                   )
+                                   )
 
-    s3 = box(teensy_pcb_thickness, teensy_holder_top_length, 3)
-    s3 = translate(s3,
-                   [
-                       (teensy_pcb_thickness / 2) + 3,
-                       teensy_holder_top_offset,
-                       1.5 + (teensy_width / 2),
-                   ]
-                   )
+    s3 = geometry_engine.box(teensy_pcb_thickness, teensy_holder_top_length, 3)
+    s3 = geometry_engine.translate(s3,
+                                   [
+                                       (teensy_pcb_thickness / 2) + 3,
+                                       teensy_holder_top_offset,
+                                       1.5 + (teensy_width / 2),
+                                   ]
+                                   )
 
-    s4 = box(4, teensy_holder_top_length, 4)
-    s4 = translate(s4,
-                   [teensy_pcb_thickness + 5, teensy_holder_top_offset, 1 + (teensy_width / 2)]
-                   )
+    s4 = geometry_engine.box(4, teensy_holder_top_length, 4)
+    s4 = geometry_engine.translate(s4,
+                                   [teensy_pcb_thickness + 5, teensy_holder_top_offset, 1 + (teensy_width / 2)]
+                                   )
 
-    shape = union((s1, s2, s3, s4))
+    shape = geometry_engine.union((s1, s2, s3, s4))
 
-    shape = translate(shape, [-teensy_holder_width, 0, 0])
-    shape = translate(shape, [-1.4, 0, 0])
-    shape = translate(shape,
-                      [teensy_top_xy[0], teensy_top_xy[1] - 1, (6 + teensy_width) / 2]
-                      )
+    shape = geometry_engine.translate(shape, [-teensy_holder_width, 0, 0])
+    shape = geometry_engine.translate(shape, [-1.4, 0, 0])
+    shape = geometry_engine.translate(shape,
+                                      [teensy_top_xy[0], teensy_top_xy[1] - 1, (6 + teensy_width) / 2]
+                                      )
 
     return shape
 
@@ -3842,13 +3892,13 @@ def teensy_holder():
 def screw_insert_shape(bottom_radius, top_radius, height):
     logging.debug("screw_insert_shape()")
     if bottom_radius == top_radius:
-        base = cylinder(radius=bottom_radius, height=height)
+        base = geometry_engine.cylinder(radius=bottom_radius, height=height)
     else:
-        base = translate(cone(r1=bottom_radius, r2=top_radius, height=height), (0, 0, -height / 2))
+        base = geometry_engine.translate(cone(r1=bottom_radius, r2=top_radius, height=height), (0, 0, -height / 2))
 
-    shape = union((
+    shape = geometry_engine.union((
         base,
-        translate(sphere(top_radius), (0, 0, height / 2)),
+        geometry_engine.translate(sphere(top_radius), (0, 0, height / 2)),
     ))
     return shape
 
@@ -3906,7 +3956,7 @@ def screw_insert(column, row, bottom_radius, top_radius, height, side='right'):
         )
 
     shape = screw_insert_shape(bottom_radius, top_radius, height)
-    shape = translate(shape, [position[0], position[1], height / 2])
+    shape = geometry_engine.translate(shape, [position[0], position[1], height / 2])
 
     return shape
 
@@ -3963,7 +4013,7 @@ def thumb_screw_insert(bottom_radius, top_radius, height, offset=None, side='rig
 
     for xyposition in xypositions:
         position = list(np.array(origin) + np.array([*xyposition, -origin[2]]))
-        shapes.append(translate(shape, [position[0], position[1], height / 2 + offset]))
+        shapes.append(geometry_engine.translate(shape, [position[0], position[1], height / 2 + offset]))
 
     return shapes
 
@@ -3971,13 +4021,13 @@ def thumb_screw_insert(bottom_radius, top_radius, height, offset=None, side='rig
 def screw_insert_all_shapes(bottom_radius, top_radius, height, offset=0, side='right'):
     logging.debug("screw_insert_all_shapes()")
     shape = (
-        translate(screw_insert(0, 0, bottom_radius, top_radius, height, side=side), (0, 0, offset)),
-        translate(screw_insert(0, cornerrow, bottom_radius, top_radius, height, side=side), (0, left_wall_lower_y_offset, offset)),
-        translate(screw_insert(3, lastrow, bottom_radius, top_radius, height, side=side), (0, 0, offset)),
-        translate(screw_insert(3, 0, bottom_radius, top_radius, height, side=side), (0, 0, offset)),
-        translate(screw_insert(lastcol, 0, bottom_radius, top_radius, height, side=side), (0, 0, offset)),
-        translate(screw_insert(lastcol, cornerrow, bottom_radius, top_radius, height, side=side), (0, 0, offset)),
-        # translate(screw_insert_thumb(bottom_radius, top_radius, height), (0, 0, offset)),
+        geometry_engine.translate(screw_insert(0, 0, bottom_radius, top_radius, height, side=side), (0, 0, offset)),
+        geometry_engine.translate(screw_insert(0, cornerrow, bottom_radius, top_radius, height, side=side), (0, left_wall_lower_y_offset, offset)),
+        geometry_engine.translate(screw_insert(3, lastrow, bottom_radius, top_radius, height, side=side), (0, 0, offset)),
+        geometry_engine.translate(screw_insert(3, 0, bottom_radius, top_radius, height, side=side), (0, 0, offset)),
+        geometry_engine.translate(screw_insert(lastcol, 0, bottom_radius, top_radius, height, side=side), (0, 0, offset)),
+        geometry_engine.translate(screw_insert(lastcol, cornerrow, bottom_radius, top_radius, height, side=side), (0, 0, offset)),
+        # geometry_engine.translate(screw_insert_thumb(bottom_radius, top_radius, height), (0, 0, offset)),
     )
 
     return shape
@@ -4019,39 +4069,39 @@ def screw_insert_screw_holes(side='right'):
 
 def wire_post(direction, offset):
     logging.debug("wire_post()")
-    s1 = box(
+    s1 = geometry_engine.box(
         wire_post_diameter, wire_post_diameter, wire_post_height
     )
-    s1 = translate(s1, [0, -wire_post_diameter * 0.5 * direction, 0])
+    s1 = geometry_engine.translate(s1, [0, -wire_post_diameter * 0.5 * direction, 0])
 
-    s2 = box(
+    s2 = geometry_engine.box(
         wire_post_diameter, wire_post_overhang, wire_post_diameter
     )
-    s2 = translate(s2,
-                   [0, -wire_post_overhang * 0.5 * direction, -wire_post_height / 2]
-                   )
+    s2 = geometry_engine.translate(s2,
+                                   [0, -wire_post_overhang * 0.5 * direction, -wire_post_height / 2]
+                                   )
 
-    shape = union((s1, s2))
-    shape = translate(shape, [0, -offset, (-wire_post_height / 2) + 3])
-    shape = rotate(shape, [-alpha / 2, 0, 0])
-    shape = translate(shape, (3, -mount_height / 2, 0))
+    shape = geometry_engine.union((s1, s2))
+    shape = geometry_engine.translate(shape, [0, -offset, (-wire_post_height / 2) + 3])
+    shape = geometry_engine.rotate(shape, [-alpha / 2, 0, 0])
+    shape = geometry_engine.translate(shape, (3, -mount_height / 2, 0))
 
     return shape
 
 
 def wire_posts():
     logging.debug("wire_posts()")
-    shape = default_thumb_ml_place(wire_post(1, 0).translate([-5, 0, -2]))
-    shape = union([shape, default_thumb_ml_place(wire_post(-1, 6).translate([0, 0, -2.5]))])
-    shape = union([shape, default_thumb_ml_place(wire_post(1, 0).translate([5, 0, -2]))])
+    shape = default_thumb_ml_place(wire_post(1, 0).geometry_engine.translate([-5, 0, -2]))
+    shape = geometry_engine.union([shape, default_thumb_ml_place(wire_post(-1, 6).geometry_engine.translate([0, 0, -2.5]))])
+    shape = geometry_engine.union([shape, default_thumb_ml_place(wire_post(1, 0).geometry_engine.translate([5, 0, -2]))])
 
     for column in range(lastcol):
         for row in range(cornerrow):
-            shape = union([
+            shape = geometry_engine.union([
                 shape,
-                key_place(wire_post(1, 0).translate([-5, 0, 0]), column, row),
-                key_place(wire_post(-1, 6).translate([0, 0, 0]), column, row),
-                key_place(wire_post(1, 0).translate([5, 0, 0]), column, row),
+                key_place(wire_post(1, 0).geometry_engine.translate([-5, 0, 0]), column, row),
+                key_place(wire_post(-1, 6).geometry_engine.translate([0, 0, 0]), column, row),
+                key_place(wire_post(1, 0).geometry_engine.translate([5, 0, 0]), column, row),
             ])
     return shape
 
@@ -4059,81 +4109,81 @@ def wire_posts():
 def model_side(side="right"):
     logging.debug("model_right()")
     #shape = add([key_holes(side=side)])
-    shape = union([key_holes(side=side)])
+    shape = geometry_engine.union([key_holes(side=side)])
     if debug_exports:
         export_file(shape=shape, fname=path.join(r"..", "things", r"debug_key_plates"))
     connector_shape = connectors()
-    shape = union([shape, connector_shape])
+    shape = geometry_engine.union([shape, connector_shape])
     if debug_exports:
         export_file(shape=shape, fname=path.join(r"..", "things", r"debug_connector_shape"))
     walls_shape = case_walls(side=side, skeleton=skeletal)
     if debug_exports:
         export_file(shape=walls_shape, fname=path.join(r"..", "things", r"debug_walls_shape"))
 
-    s2 = union([walls_shape])
-    s2 = union([s2, *screw_insert_outers(side=side)])
+    s2 = geometry_engine.union([walls_shape])
+    s2 = geometry_engine.union([s2, *screw_insert_outers(side=side)])
 
     if controller_mount_type in ['RJ9_USB_TEENSY', 'USB_TEENSY']:
-        s2 = union([s2, teensy_holder()])
+        s2 = geometry_engine.union([s2, teensy_holder()])
 
     if controller_mount_type in ['RJ9_USB_TEENSY', 'RJ9_USB_WALL', 'USB_WALL', 'USB_TEENSY']:
-        s2 = union([s2, usb_holder()])
-        s2 = difference(s2, [usb_holder_hole()])
+        s2 = geometry_engine.union([s2, usb_holder()])
+        s2 = geometry_engine.difference(s2, [usb_holder_hole()])
 
     if controller_mount_type in ['RJ9_USB_TEENSY', 'RJ9_USB_WALL']:
-        s2 = difference(s2, [rj9_space()])
+        s2 = geometry_engine.difference(s2, [rj9_space()])
 
     if controller_mount_type in ['EXTERNAL']:
-        s2 = difference(s2, [external_mount_hole()])
+        s2 = geometry_engine.difference(s2, [external_mount_hole()])
 
     if controller_mount_type in ['PCB_MOUNT']:
-        s2 = difference(s2, [pcb_usb_hole()])
-        s2 = difference(s2, [trrs_hole()])
-        s2 = union([s2, pcb_holder()])
-        s2 = difference(s2, [wall_thinner()])
-        s2 = difference(s2, pcb_screw_hole())
+        s2 = geometry_engine.difference(s2, [pcb_usb_hole()])
+        s2 = geometry_engine.difference(s2, [trrs_hole()])
+        s2 = geometry_engine.union([s2, pcb_holder()])
+        s2 = geometry_engine.difference(s2, [wall_thinner()])
+        s2 = geometry_engine.difference(s2, pcb_screw_hole())
 
     if controller_mount_type in [None, 'None']:
         0  # do nothing, only here to expressly state inaction.
 
-    s2 = difference(s2, [union(screw_insert_holes(side=side))])
-    shape = union([shape, s2])
+    s2 = geometry_engine.difference(s2, [geometry_engine.union(screw_insert_holes(side=side))])
+    shape = geometry_engine.union([shape, s2])
 
     if controller_mount_type in ['RJ9_USB_TEENSY', 'RJ9_USB_WALL']:
-        shape = union([shape, rj9_holder()])
+        shape = geometry_engine.union([shape, rj9_holder()])
 
     if oled_mount_type == "UNDERCUT":
         hole, frame = oled_undercut_mount_frame(side=side)
-        shape = difference(shape, [hole])
-        shape = union([shape, frame])
+        shape = geometry_engine.difference(shape, [hole])
+        shape = geometry_engine.union([shape, frame])
 
     elif oled_mount_type == "SLIDING":
         hole, frame = oled_sliding_mount_frame(side=side)
-        shape = difference(shape, [hole])
-        shape = union([shape, frame])
+        shape = geometry_engine.difference(shape, [hole])
+        shape = geometry_engine.union([shape, frame])
 
     elif oled_mount_type == "CLIP":
         hole, frame = oled_clip_mount_frame(side=side)
-        shape = difference(shape, [hole])
-        shape = union([shape, frame])
+        shape = geometry_engine.difference(shape, [hole])
+        shape = geometry_engine.union([shape, frame])
 
     if trackball_in_wall and (side == ball_side or ball_side == 'both') and separable_thumb:
         tbprecut, tb, tbcutout, sensor, ball = generate_trackball_in_wall()
 
-        shape = difference(shape, [tbprecut])
+        shape = geometry_engine.difference(shape, [tbprecut])
         # export_file(shape=shape, fname=path.join(save_path, config_name + r"_test_1"))
-        shape = union([shape, tb])
+        shape = geometry_engine.union([shape, tb])
         # export_file(shape=shape, fname=path.join(save_path, config_name + r"_test_2"))
-        shape = difference(shape, [tbcutout])
+        shape = geometry_engine.difference(shape, [tbcutout])
         # export_file(shape=shape, fname=path.join(save_path, config_name + r"_test_3a"))
         # export_file(shape=add([shape, sensor]), fname=path.join(save_path, config_name + r"_test_3b"))
-        shape = union([shape, sensor])
+        shape = geometry_engine.union([shape, sensor])
 
         if show_caps:
             shape = add([shape, ball])
 
     if plate_pcb_clear:
-        shape = difference(shape, [plate_pcb_cutouts(side=side)])
+        shape = geometry_engine.difference(shape, [plate_pcb_cutouts(side=side)])
 
     main_shape = shape
 
@@ -4147,52 +4197,52 @@ def model_side(side="right"):
         export_file(shape=thumb_connector_shape, fname=path.join(r"..", "things", r"debug_thumb_connector_shape"))
 
     thumb_wall_shape = thumb_walls(side=side, skeleton=skeletal)
-    thumb_wall_shape = union([thumb_wall_shape, *thumb_screw_insert_outers(side=side)])
+    thumb_wall_shape = geometry_engine.union([thumb_wall_shape, *thumb_screw_insert_outers(side=side)])
     thumb_connection_shape = thumb_connection(side=side, skeleton=skeletal)
 
     if debug_exports:
-        thumb_test = union([thumb_shape, thumb_connector_shape, thumb_wall_shape, thumb_connection_shape])
+        thumb_test = geometry_engine.union([thumb_shape, thumb_connector_shape, thumb_wall_shape, thumb_connection_shape])
         export_file(shape=thumb_test, fname=path.join(r"..", "things", r"debug_thumb_test_{}_shape".format(side)))
 
-    thumb_section = union([thumb_shape, thumb_connector_shape, thumb_wall_shape, thumb_connection_shape])
-    thumb_section = difference(thumb_section, [union(thumb_screw_insert_holes(side=side))])
+    thumb_section = geometry_engine.union([thumb_shape, thumb_connector_shape, thumb_wall_shape, thumb_connection_shape])
+    thumb_section = geometry_engine.difference(thumb_section, [geometry_engine.union(thumb_screw_insert_holes(side=side))])
 
     has_trackball = False
     if ('TRACKBALL' in thumb_style) and (side == ball_side or ball_side == 'both'):
         logging.debug("Has Trackball")
         tbprecut, tb, tbcutout, sensor, ball = generate_trackball_in_cluster()
         has_trackball = True
-        thumb_section = difference(thumb_section, [tbprecut])
+        thumb_section = geometry_engine.difference(thumb_section, [tbprecut])
         if debug_exports:
             export_file(shape=thumb_section, fname=path.join(r"..", "things", r"debug_thumb_test_1_shape".format(side)))
-        thumb_section = union([thumb_section, tb])
+        thumb_section = geometry_engine.union([thumb_section, tb])
         if debug_exports:
             export_file(shape=thumb_section, fname=path.join(r"..", "things", r"debug_thumb_test_2_shape".format(side)))
-        thumb_section = difference(thumb_section, [tbcutout])
+        thumb_section = geometry_engine.difference(thumb_section, [tbcutout])
         if debug_exports:
             export_file(shape=thumb_section, fname=path.join(r"..", "things", r"debug_thumb_test_3_shape".format(side)))
-        thumb_section = union([thumb_section, sensor])
+        thumb_section = geometry_engine.union([thumb_section, sensor])
         if debug_exports:
             export_file(shape=thumb_section, fname=path.join(r"..", "things", r"debug_thumb_test_4_shape".format(side)))
 
     if plate_pcb_clear:
-        thumb_section = difference(thumb_section, [thumb_pcb_plate_cutouts(side=side)])
+        thumb_section = geometry_engine.difference(thumb_section, [thumb_pcb_plate_cutouts(side=side)])
 
-    block = box(350, 350, 40)
-    block = translate(block, (0, 0, -20))
-    main_shape = difference(main_shape, [block])
-    thumb_section = difference(thumb_section, [block])
+    block = geometry_engine.box(350, 350, 40)
+    block = geometry_engine.translate(block, (0, 0, -20))
+    main_shape = geometry_engine.difference(main_shape, [block])
+    thumb_section = geometry_engine.difference(thumb_section, [block])
     if debug_exports:
         export_file(shape=thumb_section, fname=path.join(r"..", "things", r"debug_thumb_test_5_shape".format(side)))
 
     if separable_thumb:
-        thumb_section = difference(thumb_section, [main_shape])
+        thumb_section = geometry_engine.difference(thumb_section, [main_shape])
         if show_caps:
             thumb_section = add([thumb_section, thumbcaps(side=side)])
             if has_trackball:
                 thumb_section = add([thumb_section, ball])
     else:
-        main_shape = union([main_shape, thumb_section])
+        main_shape = geometry_engine.union([main_shape, thumb_section])
         if debug_exports:
             export_file(shape=main_shape, fname=path.join(r"..", "things", r"debug_thumb_test_6_shape".format(side)))
         if show_caps:
@@ -4203,14 +4253,14 @@ def model_side(side="right"):
         if trackball_in_wall and (side == ball_side or ball_side == 'both') and not separable_thumb:
             tbprecut, tb, tbcutout, sensor, ball = generate_trackball_in_wall()
 
-            main_shape = difference(main_shape, [tbprecut])
+            main_shape = geometry_engine.difference(main_shape, [tbprecut])
             # export_file(shape=shape, fname=path.join(save_path, config_name + r"_test_1"))
-            main_shape = union([main_shape, tb])
+            main_shape = geometry_engine.union([main_shape, tb])
             # export_file(shape=shape, fname=path.join(save_path, config_name + r"_test_2"))
-            main_shape = difference(main_shape, [tbcutout])
+            main_shape = geometry_engine.difference(main_shape, [tbcutout])
             # export_file(shape=shape, fname=path.join(save_path, config_name + r"_test_3a"))
             # export_file(shape=add([shape, sensor]), fname=path.join(save_path, config_name + r"_test_3b"))
-            main_shape = union([main_shape, sensor])
+            main_shape = geometry_engine.union([main_shape, sensor])
 
             if show_caps:
                 main_shape = add([main_shape, ball])
@@ -4219,8 +4269,8 @@ def model_side(side="right"):
         main_shape = add([main_shape, caps()])
 
     if side == "left":
-        main_shape = mirror(main_shape, 'YZ')
-        thumb_section = mirror(thumb_section, 'YZ')
+        main_shape = geometry_engine.mirror(main_shape, 'YZ')
+        thumb_section = geometry_engine.mirror(thumb_section, 'YZ')
 
     return main_shape, thumb_section
 
@@ -4233,30 +4283,30 @@ def baseplate(wedge_angle=None, side='right'):
 
         thumb_shape = thumb(side=side)
         thumb_wall_shape = thumb_walls(side=side, skeleton=skeletal)
-        thumb_wall_shape = union([thumb_wall_shape, *thumb_screw_insert_outers(side=side)])
+        thumb_wall_shape = geometry_engine.union([thumb_wall_shape, *thumb_screw_insert_outers(side=side)])
         thumb_connector_shape = thumb_connectors(side=side)
         thumb_connection_shape = thumb_connection(side=side, skeleton=skeletal)
-        thumb_section = union([thumb_shape, thumb_connector_shape, thumb_wall_shape, thumb_connection_shape])
-        thumb_section = difference(thumb_section, [union(thumb_screw_insert_holes(side=side))])
+        thumb_section = geometry_engine.union([thumb_shape, thumb_connector_shape, thumb_wall_shape, thumb_connection_shape])
+        thumb_section = geometry_engine.difference(thumb_section, [geometry_engine.union(thumb_screw_insert_holes(side=side))])
 
-        shape = union([
+        shape = geometry_engine.union([
             case_walls(side=side),
             *screw_insert_outers(side=side),
             thumb_section
         ])
         tool = screw_insert_all_shapes(screw_hole_diameter/2., screw_hole_diameter/2., 350, side=side)
         for item in tool:
-            item = translate(item, [0, 0, -10])
-            shape = difference(shape, [item])
+            item = geometry_engine.translate(item, [0, 0, -10])
+            shape = geometry_engine.difference(shape, [item])
 
         tool = thumb_screw_insert(screw_hole_diameter/2., screw_hole_diameter/2., 350, side=side)
         for item in tool:
-            item = translate(item, [0, 0, -10])
-            shape = difference(shape, [item])
+            item = geometry_engine.translate(item, [0, 0, -10])
+            shape = geometry_engine.difference(shape, [item])
 
-        #shape = union([main_shape, thumb_shape])
+        #shape = geometry_engine.union([main_shape, thumb_shape])
 
-        shape = translate(shape, (0, 0, -0.0001))
+        shape = geometry_engine.translate(shape, (0, 0, -0.0001))
 
         square = cq.Workplane('XY').rect(1000, 1000)
         for wire in square.wires().objects:
@@ -4289,7 +4339,7 @@ def baseplate(wedge_angle=None, side='right'):
             cq.Workplane('XY').add(cq.Solid.revolve(outerWire, innerWires, angleDegrees, axisStart, axisEnd))
         else:
             inner_shape = cq.Workplane('XY').add(cq.Solid.extrudeLinear(outerWire=inner_wire, innerWires=[], vecNormal=cq.Vector(0, 0, base_thickness)))
-            inner_shape = translate(inner_shape, (0, 0, -base_rim_thickness))
+            inner_shape = geometry_engine.translate(inner_shape, (0, 0, -base_rim_thickness))
 
             holes = []
             for i in range(len(base_wires)):
@@ -4302,32 +4352,32 @@ def baseplate(wedge_angle=None, side='right'):
             for hole in holes:
                 loc = hole.Center()
                 hole_shapes.append(
-                    translate(
-                        cylinder(screw_cbore_diameter/2.0, screw_cbore_depth),
+                    geometry_engine.translate(
+                        geometry_engine.cylinder(screw_cbore_diameter/2.0, screw_cbore_depth),
                         (loc.x, loc.y, 0)
                         # (loc.x, loc.y, screw_cbore_depth/2)
                     )
                 )
-            shape = difference(shape, hole_shapes)
-            shape = translate(shape, (0, 0, -base_rim_thickness))
-            shape = union([shape, inner_shape])
+            shape = geometry_engine.difference(shape, hole_shapes)
+            shape = geometry_engine.translate(shape, (0, 0, -base_rim_thickness))
+            shape = geometry_engine.union([shape, inner_shape])
 
         return shape
     else:
 
-        shape = union([
+        shape = geometry_engine.union([
             case_walls(side=side),
             *screw_insert_outers(side=side),
             thumb_walls(side=side),
             *thumb_screw_insert_outers(side=side),
         ])
 
-        tool = translate(union(screw_insert_screw_holes(side=side)), [0, 0, -10])
-        base = box(1000, 1000, .01)
+        tool = geometry_engine.translate(geometry_engine.union(screw_insert_screw_holes(side=side)), [0, 0, -10])
+        base = geometry_engine.box(1000, 1000, .01)
         shape = shape - tool
         shape = intersect(shape, base)
 
-        shape = translate(shape, [0, 0, -0.001])
+        shape = geometry_engine.translate(shape, [0, 0, -0.001])
 
         return sl.projection(cut=True)(shape)
 
@@ -4348,15 +4398,15 @@ def run():
         export_file(shape=mod_l, fname=path.join(save_path, config_name + r"_left"))
         export_file(shape=tmb_l, fname=path.join(save_path, config_name + r"_thumb_left"))
 
-        #base_l = mirror(baseplate(mod_l, tmb_l, side='left'), 'YZ')
-        base_l = mirror(baseplate(side='left'), 'YZ')
+        #base_l = geometry_engine.mirror(baseplate(mod_l, tmb_l, side='left'), 'YZ')
+        base_l = geometry_engine.mirror(baseplate(side='left'), 'YZ')
         export_file(shape=base_l, fname=path.join(save_path, config_name + r"_left_plate"))
         export_dxf(shape=base_l, fname=path.join(save_path, config_name + r"_left_plate"))
 
     else:
-        export_file(shape=mirror(mod_r, 'YZ'), fname=path.join(save_path, config_name + r"_left"))
+        export_file(shape=geometry_engine.mirror(mod_r, 'YZ'), fname=path.join(save_path, config_name + r"_left"))
 
-        lbase = mirror(base, 'YZ')
+        lbase = geometry_engine.mirror(base, 'YZ')
         export_file(shape=lbase, fname=path.join(save_path, config_name + r"_left_plate"))
         export_dxf(shape=lbase, fname=path.join(save_path, config_name + r"_left_plate"))
 
@@ -4372,7 +4422,7 @@ def run():
         export_file(shape=oled_clip(), fname=path.join(save_path, config_name + r"_oled_clip"))
         export_file(shape=oled_clip_mount_frame()[1],
                     fname=path.join(save_path, config_name + r"_oled_clip_test"))
-        export_file(shape=union((oled_clip_mount_frame()[1], oled_clip())),
+        export_file(shape=geometry_engine.union((oled_clip_mount_frame()[1], oled_clip())),
                     fname=path.join(save_path, config_name + r"_oled_clip_assy_test"))
 
 
