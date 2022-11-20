@@ -202,7 +202,7 @@ def single_plate(cylinder_segments=100, side="right"):
         nub_cube = box(1.5, 2.75, plate_thickness)
         nub_cube = translate(nub_cube, ((1.5 / 2) + (keyswitch_width / 2),  0, plate_thickness / 2))
 
-        side_nub2 = tess_hull(shapes=(side_nub, nub_cube))
+        side_nub2 = hull_from_shapes((side_nub, nub_cube))
         side_nub2 = union([side_nub2, side_nub, nub_cube])
 
         plate_half1 = union([top_wall, left_wall, side_nub2])

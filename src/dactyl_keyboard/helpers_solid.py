@@ -102,10 +102,6 @@ def hull_from_shapes(shapes, points=None):
     return sl.hull()(*hs)
 
 
-def tess_hull(shapes, sl_tol=.5, sl_angTol=1):
-    return sl.hull()(*shapes)
-
-
 def triangle_hulls(shapes):
     logging.debug("triangle_hulls()")
     hulls = []

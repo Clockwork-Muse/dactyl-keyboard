@@ -140,22 +140,6 @@ def hull_from_shapes(shapes, points=None):
     return shape
 
 
-def tess_hull(shapes, sl_tol=.5, sl_angTol=1):
-    vertices = []
-    solids = []
-    for wp in shapes:
-        for item in wp.solids().objects:
-            solids.append(item)
-
-    for shape in solids:
-        verts = shape.tessellate(sl_tol, sl_angTol)[0]
-        for vert in verts:
-            vertices.append(np.array(vert.toTuple()))
-
-    shape = hull_from_points(vertices)
-    return shape
-
-
 def triangle_hulls(shapes):
     logging.debug("triangle_hulls()")
     hulls = [cq.Workplane('XY')]
